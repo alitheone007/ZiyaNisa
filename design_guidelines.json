@@ -1,0 +1,122 @@
+{
+  "theme": "LIGHT",
+  "archetype": "Organic & Earthy + Luxury",
+  "colors": {
+    "background": {
+      "porcelain_ivory": "#FFF8EF",
+      "soft_rose_mist": "#FDEDEA",
+      "pearl_white": "#FFFFFF"
+    },
+    "text": {
+      "deep_espresso": "#2B2118",
+      "muted_taupe": "#8A7A6A"
+    },
+    "accent": {
+      "soft_k_glow_gold": "#D8B45C",
+      "warm_champagne": "#F4DFA4",
+      "aqua_teal": "#7ED6D1",
+      "peach_blush": "#F6B8A8"
+    },
+    "status": {
+      "success_green": "#4E9F7A",
+      "error_rose": "#C95C5C"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "headings": "'Playfair Display', serif",
+      "body": "'Inter', sans-serif"
+    },
+    "scale": {
+      "h1": "text-5xl sm:text-6xl tracking-tight leading-tight font-light",
+      "h2": "text-3xl sm:text-4xl tracking-tight leading-snug font-normal",
+      "h3": "text-xl sm:text-2xl leading-normal font-normal",
+      "body_lg": "text-lg leading-relaxed text-[#2B2118]",
+      "body": "text-base leading-relaxed text-[#2B2118]",
+      "small": "text-sm tracking-wide text-[#8A7A6A]",
+      "overline": "text-xs uppercase tracking-[0.2em] font-medium text-[#D8B45C]"
+    }
+  },
+  "spacing": {
+    "section_py": "py-20 md:py-32",
+    "container_px": "px-6 md:px-12 lg:px-24",
+    "gap_sm": "gap-4",
+    "gap_md": "gap-8",
+    "gap_lg": "gap-16"
+  },
+  "border_radius": {
+    "sm": "rounded-md",
+    "md": "rounded-xl",
+    "lg": "rounded-2xl",
+    "xl": "rounded-[32px]",
+    "full": "rounded-full"
+  },
+  "shadows": {
+    "soft": "shadow-[0_8px_30px_rgba(43,33,24,0.05)]",
+    "gold_glow": "shadow-[0_0_40px_rgba(216,180,92,0.3)]",
+    "gold_glow_hover": "shadow-[0_0_60px_rgba(216,180,92,0.5)]",
+    "glass": "shadow-[0_4px_30px_rgba(0,0,0,0.05)] backdrop-blur-xl"
+  },
+  "motion": {
+    "transition_default": "transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]",
+    "transition_slow": "transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]",
+    "hover_lift": "-translate-y-2",
+    "hover_scale": "scale-105"
+  },
+  "components": {
+    "button": {
+      "primary": "bg-[#D8B45C] text-[#FFFFFF] hover:bg-[#F4DFA4] hover:text-[#2B2118] px-8 py-4 rounded-full font-medium transition-all shadow-gold_glow hover:shadow-gold_glow_hover",
+      "secondary": "bg-transparent text-[#2B2118] border border-[#D8B45C] hover:bg-[#FFF8EF] px-8 py-4 rounded-full font-medium transition-all",
+      "glass": "bg-white/70 backdrop-blur-md border border-white/40 text-[#2B2118] px-6 py-3 rounded-full hover:bg-white/90 transition-all"
+    },
+    "card": {
+      "product": "bg-[#FFFFFF] rounded-2xl p-4 shadow-soft hover:shadow-gold_glow transition-all group overflow-hidden border border-transparent hover:border-[#D8B45C]/30 relative",
+      "service": "bg-[#FDEDEA] rounded-2xl p-6 shadow-soft hover:shadow-gold_glow transition-all",
+      "glass_panel": "bg-[#FFFFFF]/80 backdrop-blur-xl rounded-3xl border border-[#FFFFFF] shadow-glass p-8"
+    },
+    "badges": {
+      "ingredient": "bg-[#7ED6D1]/10 text-[#7ED6D1] px-3 py-1 rounded-full text-xs font-medium border border-[#7ED6D1]/20",
+      "premium": "bg-[#D8B45C]/10 text-[#D8B45C] px-3 py-1 rounded-full text-xs uppercase tracking-widest border border-[#D8B45C]/30",
+      "offer": "bg-[#F6B8A8]/20 text-[#C95C5C] px-3 py-1 rounded-full text-xs font-semibold"
+    }
+  },
+  "sections_layout": {
+    "header": "fixed top-0 w-full z-50 bg-[#FFF8EF]/80 backdrop-blur-xl border-b border-[#D8B45C]/10",
+    "hero": "relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-[#FFF8EF] via-[#FDEDEA] to-[#FFF8EF] overflow-hidden",
+    "categories": "grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-8",
+    "products_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "services_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8",
+    "editorial": "grid grid-cols-1 md:grid-cols-2 gap-12 items-center"
+  },
+  "media": {
+    "hero": {
+      "sunscreen": "https://images.unsplash.com/photo-1623676714504-edd78728155e",
+      "serum": "https://images.pexels.com/photos/35899861/pexels-photo-35899861.jpeg",
+      "ittar": "https://images.unsplash.com/photo-1543422655-ac1c6ca993ed",
+      "facial": "https://images.unsplash.com/photo-1643684391140-c5056cfd3436",
+      "jewellery": "https://images.pexels.com/photos/36772547/pexels-photo-36772547.jpeg",
+      "handbag": "https://images.unsplash.com/photo-1584917865442-de89df76afd3"
+    },
+    "categories": {
+      "skincare": "https://images.pexels.com/photos/8131568/pexels-photo-8131568.jpeg",
+      "fragrance": "https://images.unsplash.com/photo-1458538977777-0549b2370168",
+      "jewellery": "https://images.unsplash.com/photo-1693212793204-bcea856c75fe",
+      "handbags": "https://images.unsplash.com/photo-1705909237050-7a7625b47fac",
+      "services": "https://images.pexels.com/photos/30809943/pexels-photo-30809943.jpeg"
+    },
+    "editorial_backgrounds": {
+      "korean_glow": "https://images.unsplash.com/photo-1555820585-c5ae44394b79",
+      "deccan_elegance": "https://images.pexels.com/photos/10924522/pexels-photo-10924522.jpeg",
+      "spa_service": "https://images.pexels.com/photos/4612122/pexels-photo-4612122.jpeg"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use Playfair Display for all main headings and Inter for body text.",
+    "Do NOT use gold text on light backgrounds for body copy. Rely on Deep Espresso (#2B2118) for main text and Muted Taupe (#8A7A6A) for secondary text.",
+    "Implement the 'gold_glow' shadow effect on hover states for premium cards and buttons.",
+    "Include premium subtle motion. Use the defined transition properties for card hover lifts (-translate-y-2).",
+    "Hero section should contain floating motion cards featuring the provided hero images (sunscreen, serum, ittar, facial, jewellery, handbag).",
+    "Maintain the K-Glow Gold visual palette strictly as defined.",
+    "Include a 'data-testid' attribute on all interactive and key elements."
+  ]
+}
