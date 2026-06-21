@@ -61,22 +61,42 @@ let webpackConfig = {
 };
 
 webpackConfig.devServer = (devServerConfig) => {
-  // Add health check endpoints if enabled
-  if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
-    const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
+  // react-scripts 5.0.1 emits the deprecated `onBeforeSetupMiddleware` /
+  // `onAfterSetupMiddleware` options, which webpack-dev-server v5 rejects.
+  // Bridge them to the new `setupMiddlewares` API and drop the old keys.
+  const onBefore = devServerConfig.onBeforeSetupMiddleware;
+  const onAfter = devServerConfig.onAfterSetupMiddleware;
+  delete devServerConfig.onBeforeSetupMiddleware;
+  delete devServerConfig.onAfterSetupMiddleware;
 
-    devServerConfig.setupMiddlewares = (middlewares, devServer) => {
-      // Call original setup if exists
-      if (originalSetupMiddlewares) {
-        middlewares = originalSetupMiddlewares(middlewares, devServer);
-      }
-
-      // Setup health endpoints
-      setupHealthEndpoints(devServer, healthPluginInstance);
-
-      return middlewares;
-    };
+  // Bridge deprecated `https` → `server` (webpack-dev-server v5)
+  if (devServerConfig.https !== undefined) {
+    if (devServerConfig.https && typeof devServerConfig.https === "object") {
+      devServerConfig.server = { type: "https", options: devServerConfig.https };
+    } else {
+      devServerConfig.server = devServerConfig.https ? "https" : "http";
+    }
+    delete devServerConfig.https;
   }
+
+  // Drop other v4-only keys not accepted by v5 schema
+  ["sockHost", "sockPath", "sockPort", "public", "publicPath", "inline", "lazy", "filename", "stats", "quiet", "noInfo", "before", "after", "clientLogLevel", "contentBase", "contentBasePublicPath", "watchContentBase", "watchOptions", "disableHostCheck"].forEach((k) => {
+    if (k in devServerConfig) delete devServerConfig[k];
+  });
+
+  const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
+  devServerConfig.setupMiddlewares = (middlewares, devServer) => {
+    if (onBefore) onBefore(devServer);
+    if (originalSetupMiddlewares) middlewares = originalSetupMiddlewares(middlewares, devServer);
+    if (onAfter) onAfter(devServer);
+    if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
+      setupHealthEndpoints(devServer, healthPluginInstance);
+    }
+    return middlewares;
+  };
+
+  // Allow the preview host(s) explicitly to avoid "Invalid Host header"
+  devServerConfig.allowedHosts = "all";
 
   return devServerConfig;
 };

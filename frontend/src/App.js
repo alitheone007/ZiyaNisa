@@ -1,54 +1,38 @@
-import { useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { Toaster } from "@/components/ui/sonner";
+import Home from "@/pages/Home";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
+/**
+ * ZiyaNisa — App entry.
+ *
+ * PHASE 1 (current): One-page visual preview at "/".
+ *
+ * PENDING (next AI / phases — implement when ready):
+ *   - /shop, /shop/:category, /product/:slug          (Product marketplace)
+ *   - /cart, /checkout                                (Cart + Checkout placeholder)
+ *   - /services, /services/:slug, /book/:serviceId    (At-home salon booking flow)
+ *   - /beautician/:id                                 (Beautician profile)
+ *   - /account, /account/orders, /account/bookings    (Customer dashboard)
+ *   - /wishlist
+ *   - /vendor/onboarding, /vendor/dashboard
+ *   - /beautician/onboarding, /beautician/dashboard
+ *   - /admin                                          (Role-gated admin)
+ *   - /about, /journal, /ittar, /jewellery, /login    (Static + auth)
+ *
+ * See /app/memory/PRD.md (created on finish) and
+ *     /app/backend/sql_schema_reference.sql for full data model.
+ */
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
+          <Route path="/" element={<Home />} />
+          {/* TODO(next-AI): add routes listed above as those pages are built */}
         </Routes>
       </BrowserRouter>
+      <Toaster richColors position="top-center" />
     </div>
   );
 }
