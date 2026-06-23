@@ -1,0 +1,50 @@
+services:
+
+  # ── Nginx reverse-proxy + React SPA ─────────────────────────────────────────
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/proxy:latest
+    container_name: ziyanisa-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Let's Encrypt certs (run certbot once on the host to populate)
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - backend
+    networks:
+      - app
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/backend:latest
+    container_name: ziyanisa-backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - mongodb
+    networks:
+      - app
+
+  # ── MongoDB ───────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7-jammy
+    container_name: ziyanisa-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  mongo_data:

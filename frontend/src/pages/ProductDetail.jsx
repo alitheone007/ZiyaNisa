@@ -1,0 +1,337 @@
+import { useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { Star, ShoppingBag, Heart, ChevronRight, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Header from "@/components/site/Header";
+import Footer from "@/components/site/Footer";
+import MobileBottomNav from "@/components/site/MobileBottomNav";
+import api from "@/lib/api";
+import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
+import { PRODUCTS } from "@/data/seed";
+import { toast } from "sonner";
+
+export default function ProductDetail() {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+  const { addToCart } = useCart();
+  const { toggle, isWishlisted } = useWishlist();
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+
+  const { data: product, isLoading, isError } = useQuery({
+    queryKey: ["product", slug],
+    queryFn: async () => {
+      const res = await api.get(`/products/${slug}`);
+      return res.data;
+    },
+    placeholderData: PRODUCTS.find((p) => p.id === slug),
+    retry: false,
+  });
+
+  if (isLoading && !product) {
+    return (
+      <div className="min-h-screen bg-ivory">
+        <Header />
+        <div className="pt-28 max-w-7xl mx-auto px-5 md:px-10 grid md:grid-cols-2 gap-12 animate-pulse">
+          <div className="aspect-square rounded-3xl bg-rosemist/60" />
+          <div className="space-y-4 pt-4">
+            <div className="h-4 bg-rosemist/60 rounded w-1/4" />
+            <div className="h-8 bg-rosemist/60 rounded w-3/4" />
+            <div className="h-6 bg-rosemist/60 rounded w-1/3" />
+            <div className="h-4 bg-rosemist/60 rounded w-full" />
+            <div className="h-4 bg-rosemist/60 rounded w-2/3" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !product) {
+    return (
+      <div className="min-h-screen bg-ivory flex flex-col items-center justify-center gap-4">
+        <p className="text-taupe text-lg">Product not found.</p>
+        <Button
+          onClick={() => navigate("/shop")}
+          className="rounded-full bg-espresso text-ivory"
+        >
+          Back to Shop
+        </Button>
+      </div>
+    );
+  }
+
+  const discount = Math.round(((product.mrp - product.price) / product.mrp) * 100);
+  const wishlisted = isWishlisted(product.id);
+
+  const handleAddToCart = () => {
+    for (let i = 0; i < qty; i++) addToCart(product);
+    setAdded(true);
+    toast.success(`${product.name} added to cart`);
+    setTimeout(() => setAdded(false), 2000);
+  };
+
+  const related = PRODUCTS.filter(
+    (p) => p.id !== product.id && p.category_id === product.category_id
+  ).slice(0, 4);
+
+  return (
+    <div className="min-h-screen bg-ivory text-espresso">
+      <Header />
+      <main className="pt-24 md:pt-28 pb-20">
+        <div className="max-w-7xl mx-auto px-5 md:px-10">
+          {/* Breadcrumb */}
+          <div className="flex items-center flex-wrap gap-1.5 text-xs text-taupe mb-6">
+            <Link to="/" className="hover:text-espresso transition">Home</Link>
+            <ChevronRight className="w-3 h-3" />
+            <Link to="/shop" className="hover:text-espresso transition">Shop</Link>
+            {product.category_id && (
+              <>
+                <ChevronRight className="w-3 h-3" />
+                <Link
+                  to={`/shop/${product.category_id}`}
+                  className="hover:text-espresso transition capitalize"
+                >
+                  {product.category_id}
+                </Link>
+              </>
+            )}
+            <ChevronRight className="w-3 h-3" />
+            <span className="text-espresso line-clamp-1">{product.name}</span>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-10 md:gap-16">
+            {/* Image */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              className="relative"
+            >
+              <div className="aspect-square rounded-3xl overflow-hidden bg-rosemist/30 border border-gold/15">
+                <img
+                  src={product.img}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {discount > 0 && (
+                <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-errorRose/95 text-pearl text-sm font-semibold">
+                  -{discount}% OFF
+                </span>
+              )}
+            </motion.div>
+
+            {/* Info */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex flex-col"
+            >
+              <div className="text-xs uppercase tracking-[0.25em] text-gold">
+                {product.brand}
+              </div>
+              <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl text-espresso mt-2 leading-tight">
+                {product.name}
+              </h1>
+
+              {/* Rating */}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`w-4 h-4 ${
+                        i < Math.floor(product.rating)
+                          ? "fill-gold text-gold"
+                          : "text-taupe/40"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="font-medium">{product.rating}</span>
+                <span className="text-taupe">
+                  ({product.reviews?.toLocaleString()} reviews)
+                </span>
+              </div>
+
+              {/* Badges */}
+              {product.badges?.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {product.badges.map((b) => (
+                    <span
+                      key={b}
+                      className="text-xs px-3 py-1 rounded-full bg-aqua/15 border border-aqua/40 text-espresso"
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Price */}
+              <div className="mt-5 flex items-baseline gap-3">
+                <span className="text-3xl font-semibold">
+                  ₹{product.price.toLocaleString("en-IN")}
+                </span>
+                {product.mrp > product.price && (
+                  <>
+                    <span className="text-taupe text-lg line-through">
+                      ₹{product.mrp.toLocaleString("en-IN")}
+                    </span>
+                    <span className="text-green-600 text-sm font-medium">
+                      Save ₹{(product.mrp - product.price).toLocaleString("en-IN")}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Key actives */}
+              {product.actives?.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-xs uppercase tracking-[0.2em] text-taupe mb-2">
+                    Key Actives
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {product.actives.map((a) => (
+                      <span
+                        key={a}
+                        className="text-xs px-3 py-1.5 rounded-full bg-pearl border border-gold/30 text-espresso"
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Qty */}
+              <div className="mt-6 flex items-center gap-4">
+                <span className="text-xs uppercase tracking-[0.2em] text-taupe">
+                  Qty
+                </span>
+                <div className="flex items-center border border-gold/30 rounded-full overflow-hidden">
+                  <button
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    className="w-10 h-10 grid place-items-center hover:bg-rosemist/60 transition text-espresso text-lg"
+                    aria-label="Decrease quantity"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center text-sm font-medium">
+                    {qty}
+                  </span>
+                  <button
+                    onClick={() => setQty((q) => q + 1)}
+                    className="w-10 h-10 grid place-items-center hover:bg-rosemist/60 transition text-espresso text-lg"
+                    aria-label="Increase quantity"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* CTAs */}
+              <div className="mt-6 flex gap-3">
+                <Button
+                  data-testid="pdp-add-cart"
+                  onClick={handleAddToCart}
+                  className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-base"
+                >
+                  {added ? (
+                    <>
+                      <Check className="w-4 h-4 mr-2" /> Added!
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingBag className="w-4 h-4 mr-2" /> Add to Cart
+                    </>
+                  )}
+                </Button>
+                <Button
+                  data-testid="pdp-wishlist"
+                  size="icon"
+                  variant="outline"
+                  onClick={() => toggle(product)}
+                  className={`h-12 w-12 rounded-full border-gold/40 ${
+                    wishlisted ? "bg-rosemist" : ""
+                  }`}
+                >
+                  <Heart
+                    className={`w-5 h-5 ${
+                      wishlisted
+                        ? "fill-espresso text-espresso"
+                        : "text-espresso"
+                    }`}
+                  />
+                </Button>
+              </div>
+
+              {/* Trust pills */}
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[
+                  "Free delivery above ₹999",
+                  "Verified brand",
+                  "Easy returns",
+                ].map((t) => (
+                  <span
+                    key={t}
+                    className="text-xs flex items-center gap-1 px-3 py-1.5 rounded-full bg-pearl border border-gold/20 text-taupe"
+                  >
+                    <Check className="w-3 h-3 text-gold" /> {t}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Related products */}
+          {related.length > 0 && (
+            <div className="mt-20">
+              <div className="text-xs uppercase tracking-[0.25em] text-gold mb-2">
+                You May Also Like
+              </div>
+              <h2 className="font-serif text-2xl text-espresso mb-8">
+                More from this category
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {related.map((p) => (
+                  <Link
+                    key={p.id}
+                    to={`/product/${p.id}`}
+                    className="group rounded-2xl overflow-hidden bg-pearl border border-gold/10 hover:border-gold/40 hover:shadow-cardLift transition-all"
+                  >
+                    <div className="aspect-square overflow-hidden">
+                      <img
+                        src={p.img}
+                        alt={p.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      />
+                    </div>
+                    <div className="p-3">
+                      <div className="text-[10px] text-taupe uppercase tracking-[0.18em]">
+                        {p.brand}
+                      </div>
+                      <div className="text-sm font-medium text-espresso mt-0.5 line-clamp-2">
+                        {p.name}
+                      </div>
+                      <div className="text-sm mt-1 font-medium">
+                        ₹{p.price.toLocaleString("en-IN")}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+      <Footer />
+      <MobileBottomNav />
+    </div>
+  );
+}

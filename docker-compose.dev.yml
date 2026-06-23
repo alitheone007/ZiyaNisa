@@ -1,0 +1,20 @@
+# Local development: only MongoDB runs in Docker.
+# Run frontend and backend natively for hot-reload.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd backend && cp .env.example .env && uvicorn server:app --reload
+#   cd frontend && yarn start
+
+services:
+  mongodb:
+    image: mongo:7-jammy
+    container_name: ziyanisa-mongodb-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data_dev:/data/db
+
+volumes:
+  mongo_data_dev:

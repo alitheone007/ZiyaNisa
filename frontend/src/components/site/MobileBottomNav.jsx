@@ -1,29 +1,41 @@
-import { useState } from "react";
 import { Home, Search, Calendar, Heart, User, ShoppingBag } from "lucide-react";
 import { motion } from "framer-motion";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useCart } from "@/context/CartContext";
 
 const TABS = [
-  { id: "home", label: "Home", Icon: Home },
-  { id: "shop", label: "Shop", Icon: Search },
-  { id: "book", label: "Book", Icon: Calendar },
-  { id: "wishlist", label: "Saved", Icon: Heart },
-  { id: "account", label: "Me", Icon: User },
+  { id: "home", label: "Home", Icon: Home, href: "/" },
+  { id: "shop", label: "Shop", Icon: Search, href: "/shop" },
+  { id: "book", label: "Book", Icon: Calendar, href: "#services" },
+  { id: "wishlist", label: "Saved", Icon: Heart, href: "/wishlist" },
+  { id: "account", label: "Me", Icon: User, href: "/login" },
 ];
 
 export default function MobileBottomNav() {
-  const [active, setActive] = useState("home");
+  const { totalItems } = useCart();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isActive = (href) => {
+    if (href === "/") return location.pathname === "/";
+    return location.pathname.startsWith(href) && href !== "#services";
+  };
+
   return (
     <>
-      {/* Floating cart button */}
+      {/* Floating cart FAB */}
       <button
         data-testid="floating-cart"
+        onClick={() => navigate("/cart")}
         className="lg:hidden fixed right-4 bottom-24 z-40 w-14 h-14 rounded-full bg-espresso text-ivory shadow-cardLift grid place-items-center hover:bg-espresso/90 transition"
         aria-label="Open cart"
       >
         <ShoppingBag className="w-5 h-5" />
-        <span className="absolute -top-1 -right-1 bg-gold text-espresso text-[10px] rounded-full w-5 h-5 grid place-items-center font-bold">
-          2
-        </span>
+        {totalItems > 0 && (
+          <span className="absolute -top-1 -right-1 bg-gold text-espresso text-[10px] rounded-full w-5 h-5 grid place-items-center font-bold">
+            {totalItems}
+          </span>
+        )}
       </button>
 
       <nav
@@ -32,30 +44,34 @@ export default function MobileBottomNav() {
       >
         <div className="grid grid-cols-5 h-16">
           {TABS.map((t) => {
-            const isActive = active === t.id;
+            const active = isActive(t.href);
+            const isAnchor = t.href.startsWith("#");
+            const Wrapper = isAnchor ? "a" : Link;
+            const linkProps = isAnchor ? { href: t.href } : { to: t.href };
+
             return (
-              <button
+              <Wrapper
                 key={t.id}
+                {...linkProps}
                 data-testid={`bnav-${t.id}`}
-                onClick={() => setActive(t.id)}
                 className="relative flex flex-col items-center justify-center gap-1 text-[10px] uppercase tracking-[0.15em]"
               >
-                {isActive && (
+                {active && (
                   <motion.span
                     layoutId="bnav-pill"
                     className="absolute top-0 inset-x-6 h-0.5 bg-gold rounded-full"
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
                   />
                 )}
-                <t.Icon className={`w-5 h-5 ${isActive ? "text-espresso" : "text-taupe"}`} />
-                <span className={isActive ? "text-espresso" : "text-taupe"}>{t.label}</span>
-              </button>
+                <t.Icon className={`w-5 h-5 ${active ? "text-espresso" : "text-taupe"}`} />
+                <span className={active ? "text-espresso" : "text-taupe"}>{t.label}</span>
+              </Wrapper>
             );
           })}
         </div>
       </nav>
 
-      {/* spacer so content isn't hidden behind nav on mobile */}
+      {/* Spacer so content isn't hidden behind nav on mobile */}
       <div className="lg:hidden h-16" />
     </>
   );

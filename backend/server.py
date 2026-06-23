@@ -178,6 +178,39 @@ async def seed_services():
 
 
 # =========================================================================
+# Product / Category / Service CRUD endpoints.
+# Currently served from in-memory seed data.
+# PENDING(next-AI): replace seed lists with MongoDB read/write operations.
+# =========================================================================
+from fastapi import HTTPException, Query
+
+
+@api_router.get("/categories", response_model=List[Category])
+async def get_categories():
+    return CATEGORIES_SEED
+
+
+@api_router.get("/products", response_model=List[Product])
+async def get_products(category: Optional[str] = Query(None)):
+    if category:
+        return [p for p in PRODUCTS_SEED if p.get("category_id") == category]
+    return PRODUCTS_SEED
+
+
+@api_router.get("/products/{product_id}", response_model=Product)
+async def get_product(product_id: str):
+    product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@api_router.get("/services", response_model=List[Service])
+async def get_services():
+    return SERVICES_SEED
+
+
+# =========================================================================
 # Lead capture endpoints (waitlist + newsletter)
 # Stored in MongoDB so leads survive restarts even at MVP stage.
 # =========================================================================
