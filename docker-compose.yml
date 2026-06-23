@@ -42,9 +42,44 @@ services:
     networks:
       - app
 
+  # ── n8n workflow engine ───────────────────────────────────────────────────────
+  # Already running on server? Skip this block.
+  # To start: docker compose --profile n8n up -d n8n
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ziyanisa-n8n
+    restart: unless-stopped
+    profiles: ["n8n"]          # opt-in: docker compose --profile n8n up -d
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://${DOMAIN}/n8n/
+      - N8N_PATH=/n8n/
+      - DB_TYPE=mongodb
+      - DB_MONGODB_CONNECTION_URL=${MONGO_URL}
+      - DB_MONGODB_DATABASE=n8n
+      # Put your n8n encryption key here (generate: openssl rand -hex 32)
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-in-prod}
+      # Forward env vars that n8n workflows need
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - ZIYANISA_API_URL=http://backend:8000/api
+      - CLAWBOT_URL=${CLAWBOT_URL:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - mongodb
+    networks:
+      - app
+
 networks:
   app:
     driver: bridge
 
 volumes:
   mongo_data:
+  n8n_data:

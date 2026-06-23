@@ -498,16 +498,98 @@ async def upi_config():
 
 @api_router.post("/admin/seed-db")
 async def seed_db():
-    """Insert seed products into MongoDB if collection is empty."""
-    count = await db.products.count_documents({})
-    if count > 0:
-        return {"message": f"Already seeded ({count} products). Skipped."}
-    docs = [{**p} for p in PRODUCTS_SEED]
-    await db.products.insert_many(docs)
-    cat_count = await db.categories.count_documents({})
-    if cat_count == 0:
+    """Insert seed data into MongoDB (idempotent — skips if already present)."""
+    seeded = []
+    if await db.products.count_documents({}) == 0:
+        await db.products.insert_many([{**p} for p in PRODUCTS_SEED])
+        seeded.append(f"{len(PRODUCTS_SEED)} products")
+    if await db.categories.count_documents({}) == 0:
         await db.categories.insert_many([{**c} for c in CATEGORIES_SEED])
-    return {"message": f"Seeded {len(docs)} products and {len(CATEGORIES_SEED)} categories."}
+        seeded.append(f"{len(CATEGORIES_SEED)} categories")
+    if await db.services.count_documents({}) == 0:
+        await db.services.insert_many([{**s} for s in SERVICES_SEED])
+        seeded.append(f"{len(SERVICES_SEED)} services")
+    if seeded:
+        return {"message": f"Seeded: {', '.join(seeded)}."}
+    return {"message": "Already seeded. Skipped."}
+
+
+# ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────
+
+class ChatQueryInput(BaseModel):
+    message: str
+    phone: str
+    context: Optional[dict] = None
+
+class ChatSessionUpdate(BaseModel):
+    phone: str
+    business: str           # "ziyanisa" | "spices" | "unknown"
+    context: Optional[dict] = None
+
+@api_router.post("/chat/query")
+async def chat_query(payload: ChatQueryInput):
+    msg = payload.message.lower()
+    results: dict = {"products": [], "services": [], "orders": [], "intent": "general", "business": "ziyanisa"}
+
+    # Product context (up to 3 most relevant)
+    p_query: dict = {"$or": [
+        {"name":      {"$regex": msg, "$options": "i"}},
+        {"brand":     {"$regex": msg, "$options": "i"}},
+        {"category_id": {"$regex": msg.replace(" ", "-"), "$options": "i"}},
+        {"actives":   {"$elemMatch": {"$regex": msg, "$options": "i"}}},
+    ]}
+    results["products"] = await db.products.find(p_query, {"_id": 0}).limit(3).to_list(3)
+
+    # Service context (fall back to seed if DB empty)
+    s_query: dict = {"$or": [
+        {"name": {"$regex": msg, "$options": "i"}},
+        {"tag":  {"$regex": msg, "$options": "i"}},
+    ]}
+    db_svcs = await db.services.find(s_query, {"_id": 0}).limit(3).to_list(3)
+    if not db_svcs:
+        db_svcs = [s for s in SERVICES_SEED if msg in s.get("name", "").lower() or msg in s.get("tag", "").lower()][:3]
+    results["services"] = db_svcs
+
+    # Order lookup by phone (last 10 digits)
+    phone_digits = "".join(c for c in payload.phone if c.isdigit())[-10:]
+    if phone_digits:
+        user = await db.users.find_one({"phone": {"$regex": phone_digits}}, {"_id": 0})
+        if user:
+            results["orders"] = await db.orders.find(
+                {"user_id": user["id"]}, {"_id": 0}
+            ).sort("created_at", -1).limit(3).to_list(3)
+
+    # Intent classification
+    if any(w in msg for w in ["order", "track", "status", "delivery", "dispatch", "where is my"]):
+        results["intent"] = "order_status"
+    elif any(w in msg for w in ["book", "appointment", "facial", "salon", "service", "beautician", "massage"]):
+        results["intent"] = "service_booking"
+    elif any(w in msg for w in ["price", "cost", "rate", "how much", "charges"]):
+        results["intent"] = "pricing"
+    elif any(w in msg for w in ["return", "refund", "cancel", "complaint", "damaged", "wrong item"]):
+        results["intent"] = "support"
+    elif any(w in msg for w in ["skincare", "haircare", "makeup", "fragrance", "serum", "cream", "oil", "ittar"]):
+        results["intent"] = "product_discovery"
+    else:
+        results["intent"] = "general"
+
+    return results
+
+@api_router.get("/chat/session/{phone}")
+async def get_chat_session(phone: str):
+    session = await db.chat_sessions.find_one({"phone": phone}, {"_id": 0})
+    return session or {"phone": phone, "business": "unknown", "context": {}}
+
+@api_router.post("/chat/session")
+async def upsert_chat_session(payload: ChatSessionUpdate):
+    doc = {
+        "phone": payload.phone,
+        "business": payload.business,
+        "context": payload.context or {},
+        "last_active": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.chat_sessions.update_one({"phone": payload.phone}, {"$set": doc}, upsert=True)
+    return doc
 
 
 # ── App setup ──────────────────────────────────────────────────────────────────
@@ -523,6 +605,19 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+@app.on_event("startup")
+async def create_indexes():
+    await db.products.create_index([("category_id", 1)])
+    await db.products.create_index([("name", "text"), ("brand", "text"), ("actives", "text")])
+    await db.products.create_index([("price", 1)])
+    await db.orders.create_index([("user_id", 1)])
+    await db.orders.create_index([("created_at", -1)])
+    await db.users.create_index([("contact", 1)], unique=True, sparse=True)
+    await db.users.create_index([("phone", 1)], sparse=True)
+    await db.chat_sessions.create_index([("phone", 1)], unique=True)
+    # Auto-expire idle chat sessions after 7 days
+    await db.chat_sessions.create_index([("last_active", 1)], expireAfterSeconds=604800)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 
-// Replace with your actual WhatsApp business number (no + or spaces)
-const WA_NUMBER = "919000000000";
+// Virtual Twilio WhatsApp number — see n8n/SETUP.md for how to get one.
+// Format: country code + number digits, no + or spaces.
+// Example: India +91 9876543210 → "919876543210"
+const WA_NUMBER = process.env.REACT_APP_WA_NUMBER || "919000000000";
 const WA_MSG    = encodeURIComponent("Hi ZiyaNisa! I need help with my order.");
 
 export default function WhatsAppFloat() {
