@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Copy, ArrowLeft, Smartphone, AlertCircle } from "lucide-react";
@@ -210,7 +210,7 @@ export default function Checkout() {
                         "Scan the QR code or enter UPI ID manually",
                         `Enter amount ₹${grandTotal.toLocaleString("en-IN")} exactly`,
                         "Complete the payment and note the Transaction ID",
-                        "Come back here and click "I've Paid" to confirm",
+                        "Come back here, then tap I've Paid to confirm",
                       ].map((step, i) => (
                         <div key={i} className="flex gap-2.5 text-sm text-taupe">
                           <span className="w-4 h-4 rounded-full bg-espresso/10 text-espresso text-[10px] grid place-items-center shrink-0 mt-0.5 font-semibold">

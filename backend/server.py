@@ -2,17 +2,19 @@
 ZiyaNisa — FastAPI backend.
 """
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from jose import jwt, JWTError
+from passlib.context import CryptContext
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 ROOT_DIR = Path(__file__).parent
@@ -24,6 +26,27 @@ db = client[os.environ["DB_NAME"]]
 
 app = FastAPI(title="ZiyaNisa API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
+
+# ── Auth config ───────────────────────────────────────────────────────────────
+JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 7
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def create_token(payload: dict) -> str:
+    data = {**payload, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)}
+    return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+def token_from_header(authorization: Optional[str]) -> dict:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return decode_token(authorization.split(" ", 1)[1])
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -89,6 +112,25 @@ class OrderCreate(BaseModel):
     items: list
     total: int
     upi_ref: Optional[str] = None
+    user_id: Optional[str] = None
+
+class UserOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+class SignupInput(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str
+
+class TokenOut(BaseModel):
+    access_token: str
+    user: UserOut
 
 
 # ── Seed data ─────────────────────────────────────────────────────────────────
@@ -285,6 +327,39 @@ async def get_services():
     return SERVICES_SEED
 
 
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
+@api_router.post("/auth/signup", response_model=TokenOut)
+async def signup(payload: SignupInput):
+    existing = await db.users.find_one({"email": payload.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    uid = str(uuid.uuid4())
+    doc = {
+        "id": uid,
+        "name": payload.name,
+        "email": payload.email,
+        "hashed_password": pwd_context.hash(payload.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(doc)
+    token = create_token({"sub": uid, "email": payload.email, "name": payload.name})
+    return {"access_token": token, "user": {"id": uid, "name": payload.name, "email": payload.email}}
+
+@api_router.post("/auth/login", response_model=TokenOut)
+async def login(payload: LoginInput):
+    user = await db.users.find_one({"email": payload.email}, {"_id": 0})
+    if not user or not pwd_context.verify(payload.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_token({"sub": user["id"], "email": user["email"], "name": user["name"]})
+    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}
+
+@api_router.get("/auth/me", response_model=UserOut)
+async def get_me(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    return {"id": claims["sub"], "name": claims["name"], "email": claims["email"]}
+
+
 # ── Lead capture ───────────────────────────────────────────────────────────────
 
 @api_router.post("/leads", response_model=Lead)
@@ -299,8 +374,15 @@ async def create_lead(payload: LeadCreate):
 # ── Orders (UPI confirmation flow) ────────────────────────────────────────────
 
 @api_router.post("/orders", response_model=Order)
-async def create_order(payload: OrderCreate):
-    order = Order(**payload.model_dump())
+async def create_order(payload: OrderCreate, authorization: Optional[str] = Header(None)):
+    data = payload.model_dump()
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            claims = decode_token(authorization.split(" ", 1)[1])
+            data["user_id"] = claims["sub"]
+        except HTTPException:
+            pass
+    order = Order(**data)
     doc = order.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.orders.insert_one(doc)
@@ -316,6 +398,12 @@ async def confirm_order(order_id: str, body: dict):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
     return {"id": order_id, "status": "payment_confirmed", "upi_ref": upi_ref}
+
+@api_router.get("/orders/mine")
+async def my_orders(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    rows = await db.orders.find({"user_id": claims["sub"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return rows
 
 
 # ── Payment provider info ──────────────────────────────────────────────────────
