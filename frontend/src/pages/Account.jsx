@@ -153,8 +153,18 @@ export default function Account() {
                         <span className="text-xs text-taupe">+{order.items.length - 3} more</span>
                       )}
                     </div>
+                    {order.shipping_address && (
+                      <p className="text-[11px] text-taupe mt-2 flex items-start gap-1">
+                        <span className="shrink-0">To:</span>
+                        <span>
+                          {order.shipping_address.full_name}, {order.shipping_address.line1}
+                          {order.shipping_address.city ? `, ${order.shipping_address.city}` : ""}
+                          {order.shipping_address.pin ? ` — ${order.shipping_address.pin}` : ""}
+                        </span>
+                      </p>
+                    )}
                     {order.upi_ref && (
-                      <p className="text-[11px] text-taupe mt-2">UPI Ref: {order.upi_ref}</p>
+                      <p className="text-[11px] text-taupe mt-1">UPI Ref: <span className="font-mono">{order.upi_ref}</span></p>
                     )}
                   </motion.div>
                 );

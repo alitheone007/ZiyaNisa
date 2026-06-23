@@ -13,6 +13,7 @@ import Login       from "@/pages/Login";
 import Checkout    from "@/pages/Checkout";
 import Account     from "@/pages/Account";
 import Services    from "@/pages/Services";
+import WhatsAppFloat from "@/components/site/WhatsAppFloat";
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
               </Routes>
             </BrowserRouter>
             <Toaster richColors position="top-center" />
+            <WhatsAppFloat />
           </div>
         </WishlistProvider>
       </CartProvider>

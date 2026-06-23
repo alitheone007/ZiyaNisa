@@ -155,10 +155,23 @@ export default function Cart() {
                       {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
                     </span>
                   </div>
-                  {deliveryFee > 0 && (
-                    <p className="text-xs text-taupe bg-rosemist/30 rounded-lg px-3 py-2">
-                      Add ₹{(999 - totalPrice).toLocaleString("en-IN")} more
-                      for free delivery
+                  {/* Free shipping progress */}
+                  {deliveryFee > 0 ? (
+                    <div className="bg-rosemist/30 rounded-xl p-3 space-y-2">
+                      <p className="text-xs text-taupe flex justify-between">
+                        <span>Add <span className="text-espresso font-semibold">₹{(999 - totalPrice).toLocaleString("en-IN")}</span> for free delivery</span>
+                        <span className="text-espresso font-medium">{Math.round((totalPrice / 999) * 100)}%</span>
+                      </p>
+                      <div className="h-1.5 bg-gold/20 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-gold to-champagne rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (totalPrice / 999) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-green-600 bg-green-50 rounded-xl px-3 py-2 font-medium">
+                      You've unlocked free delivery!
                     </p>
                   )}
                   <div className="border-t border-gold/15 pt-3 flex justify-between font-semibold text-espresso text-base">

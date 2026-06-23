@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, ShoppingBag, Heart, SlidersHorizontal, X } from "lucide-react";
+import { Star, ShoppingBag, Heart, SlidersHorizontal, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -15,6 +15,8 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { CATEGORIES, PRODUCTS } from "@/data/seed";
 import { toast } from "sonner";
+
+const PAGE_SIZE = 20;
 
 const SORT_OPTIONS = [
   { value: "featured",   label: "Featured" },
@@ -48,26 +50,50 @@ export default function Shop() {
   const { toggle, isWishlisted }  = useWishlist();
   const [sort, setSort]           = useState("featured");
   const [showFilters, setShowFilters] = useState(false);
-  const [priceMax, setPriceMax]   = useState(10000);
+  const [priceMax, setPriceMax]   = useState(12000);
   const [brandFilter, setBrandFilter] = useState("");
+  const [page, setPage]           = useState(1);
+  const [accumulated, setAccumulated] = useState([]);
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["products", category, searchQuery],
+  // Reset pagination when filters/search/category changes
+  useEffect(() => {
+    setPage(1);
+    setAccumulated([]);
+  }, [category, searchQuery]);
+
+  const seedFallback = useMemo(() => ({
+    items: PRODUCTS.filter(p =>
+      (!category    || p.category_id === category) &&
+      (!searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                       p.brand.toLowerCase().includes(searchQuery.toLowerCase()))
+    ).slice(0, PAGE_SIZE),
+    total: PRODUCTS.length, page: 1, total_pages: Math.ceil(PRODUCTS.length / PAGE_SIZE),
+  }), [category, searchQuery]);
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["products", category, searchQuery, page],
     queryFn: async () => {
-      const params = {};
+      const params = { page, limit: PAGE_SIZE };
       if (category)    params.category = category;
       if (searchQuery) params.q = searchQuery;
       const res = await api.get("/products", { params });
       return res.data;
     },
-    placeholderData: PRODUCTS.filter(p =>
-      (!category    || p.category_id === category) &&
-      (!searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                       p.brand.toLowerCase().includes(searchQuery.toLowerCase()))
-    ),
+    placeholderData: seedFallback,
   });
 
-  // All unique brands from current result set
+  // Accumulate pages into a single list
+  useEffect(() => {
+    if (!data?.items) return;
+    setAccumulated(prev => page === 1 ? data.items : [...prev, ...data.items]);
+  }, [data?.items, page]);
+
+  const products = accumulated.length > 0 ? accumulated : (data?.items ?? []);
+  const totalPages   = data?.total_pages ?? 1;
+  const totalCount   = data?.total ?? 0;
+  const hasMore      = page < totalPages;
+
+  // All unique brands from accumulated result set
   const allBrands = useMemo(() => [...new Set(products.map(p => p.brand))].sort(), [products]);
 
   const sorted = useMemo(() => {
@@ -83,10 +109,10 @@ export default function Shop() {
   }, [products, sort, priceMax, brandFilter]);
 
   const activeCat     = CATEGORIES.find(c => c.id === category);
-  const activeFilters = (brandFilter ? 1 : 0) + (priceMax < 10000 ? 1 : 0);
+  const activeFilters = (brandFilter ? 1 : 0) + (priceMax < 12000 ? 1 : 0);
 
   function clearFilters() {
-    setPriceMax(10000);
+    setPriceMax(12000);
     setBrandFilter("");
   }
 
@@ -113,10 +139,8 @@ export default function Shop() {
             <h1 className="font-serif text-3xl sm:text-4xl text-espresso leading-tight">
               {searchQuery
                 ? <>Results for <span className="italic font-light">"{searchQuery}"</span></>
-                : activeCat
-                  ? activeCat.label
-                  : <>K-Glow <span className="italic font-light">Marketplace</span></>
-              }
+                : activeCat ? activeCat.label
+                : <>K-Glow <span className="italic font-light">Marketplace</span></>}
             </h1>
           </div>
 
@@ -142,7 +166,7 @@ export default function Shop() {
           <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               <p className="text-sm text-taupe">
-                <span className="text-espresso font-medium">{sorted.length}</span> products
+                <span className="text-espresso font-medium">{totalCount || sorted.length}</span> products
               </p>
               <button onClick={() => setShowFilters(v => !v)}
                 className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-all ${
@@ -182,7 +206,6 @@ export default function Shop() {
                 className="overflow-hidden mb-6"
               >
                 <div className="bg-pearl rounded-2xl border border-gold/15 p-5 grid sm:grid-cols-2 gap-6">
-                  {/* Price range */}
                   <div>
                     <label className="text-xs uppercase tracking-[0.18em] text-taupe mb-3 block">
                       Max Price — ₹{priceMax.toLocaleString("en-IN")}
@@ -194,8 +217,6 @@ export default function Shop() {
                       <span>₹100</span><span>₹12,000</span>
                     </div>
                   </div>
-
-                  {/* Brand */}
                   <div>
                     <label className="text-xs uppercase tracking-[0.18em] text-taupe mb-3 block">Brand</label>
                     <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
@@ -217,21 +238,38 @@ export default function Shop() {
 
           {/* Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-            {isLoading
+            {isLoading && page === 1
               ? Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)
               : sorted.map((p, i) => (
-                  <ShopProductCard key={p.id} p={p} delay={(i % 4) * 0.06}
-                    onAdd={() => { addToCart(p); toast.success(`${p.name} added to cart`); }}
+                  <ShopProductCard key={p.id} p={p} delay={(i % 4) * 0.04}
+                    onAdd={() => { addToCart(p); toast.success(`${p.name} added`); }}
                     wishlisted={isWishlisted(p.id)} onWishlist={() => toggle(p)} />
                 ))}
           </div>
 
+          {/* Empty state */}
           {!isLoading && sorted.length === 0 && (
             <div className="text-center py-24">
               <p className="text-taupe text-lg">No products found.</p>
               <Button onClick={() => { navigate("/shop"); clearFilters(); }}
                 className="mt-4 rounded-full bg-espresso text-ivory">
                 Browse all products
+              </Button>
+            </div>
+          )}
+
+          {/* Load More */}
+          {hasMore && sorted.length > 0 && (
+            <div className="mt-10 flex justify-center">
+              <Button
+                onClick={() => setPage(p => p + 1)}
+                disabled={isFetching}
+                variant="outline"
+                className="rounded-full border-gold/40 text-espresso h-11 px-8 hover:bg-rosemist/60 gap-2"
+              >
+                {isFetching
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading…</>
+                  : `Load More (${totalCount - sorted.length} remaining)`}
               </Button>
             </div>
           )}
@@ -248,7 +286,7 @@ function ShopProductCard({ p, delay, onAdd, wishlisted, onWishlist }) {
   return (
     <motion.article
       initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay }} whileHover={{ y: -6 }}
+      transition={{ duration: 0.4, delay }} whileHover={{ y: -6 }}
       className="group relative bg-pearl rounded-2xl border border-gold/10 hover:border-gold/40 hover:shadow-cardLift transition-all overflow-hidden"
     >
       <Link to={`/product/${p.id}`} className="block">

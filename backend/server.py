@@ -14,6 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
+import math
 from datetime import datetime, timezone, timedelta
 
 
@@ -96,6 +97,12 @@ class Service(BaseModel):
     img: str
     level: str
     tag: str
+
+class ProductsPage(BaseModel):
+    items: List[Product]
+    total: int
+    page: int
+    total_pages: int
 
 class Lead(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -314,31 +321,53 @@ async def get_status_checks():
 
 @api_router.get("/categories", response_model=List[Category])
 async def get_categories():
-    return CATEGORIES_SEED
+    cats = await db.categories.find({}, {"_id": 0}).to_list(50)
+    return cats if cats else CATEGORIES_SEED
 
-@api_router.get("/products", response_model=List[Product])
+@api_router.get("/products", response_model=ProductsPage)
 async def get_products(
     category: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
 ):
-    results = PRODUCTS_SEED
+    query: dict = {}
     if category:
-        results = [p for p in results if p.get("category_id") == category]
+        query["category_id"] = category
     if q:
-        q_lower = q.lower()
-        results = [p for p in results if q_lower in p["name"].lower() or q_lower in p["brand"].lower()]
-    return results
+        query["$or"] = [
+            {"name":  {"$regex": q, "$options": "i"}},
+            {"brand": {"$regex": q, "$options": "i"}},
+        ]
+    total = await db.products.count_documents(query)
+    if total == 0:
+        # fallback: serve in-memory seed so the shop is never empty
+        seed = PRODUCTS_SEED
+        if category: seed = [p for p in seed if p.get("category_id") == category]
+        if q:
+            ql = q.lower()
+            seed = [p for p in seed if ql in p["name"].lower() or ql in p["brand"].lower()]
+        total = len(seed)
+        skip = (page - 1) * limit
+        items = seed[skip: skip + limit]
+        return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
+    skip = (page - 1) * limit
+    items = await db.products.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str):
-    product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
 @api_router.get("/services", response_model=List[Service])
 async def get_services():
-    return SERVICES_SEED
+    svcs = await db.services.find({}, {"_id": 0}).to_list(100)
+    return svcs if svcs else SERVICES_SEED
 
 
 # ── Auth endpoints (OTP-based, passwordless) ──────────────────────────────────
