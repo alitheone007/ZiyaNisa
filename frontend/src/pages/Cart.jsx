@@ -166,12 +166,15 @@ export default function Cart() {
                     <span>₹{grandTotal.toLocaleString("en-IN")}</span>
                   </div>
                 </div>
-                <Button className="w-full mt-6 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90">
+                <Button
+                  onClick={() => navigate("/checkout")}
+                  className="w-full mt-6 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90"
+                >
                   Proceed to Checkout{" "}
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
                 <p className="text-center text-xs text-taupe mt-3">
-                  Secure checkout · Payment integration coming soon
+                  Pay via UPI · Verified by our team
                 </p>
               </div>
             </div>

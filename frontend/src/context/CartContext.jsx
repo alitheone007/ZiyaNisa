@@ -1,6 +1,7 @@
-import { createContext, useContext, useReducer } from "react";
+import { createContext, useContext, useReducer, useEffect } from "react";
 
 const CartContext = createContext(null);
+const STORAGE_KEY = "zn_cart";
 
 function cartReducer(state, action) {
   switch (action.type) {
@@ -26,8 +27,21 @@ function cartReducer(state, action) {
   }
 }
 
+function loadCart() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function CartProvider({ children }) {
-  const [items, dispatch] = useReducer(cartReducer, []);
+  const [items, dispatch] = useReducer(cartReducer, [], loadCart);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
 
   const addToCart = (item) => dispatch({ type: "ADD", item });
   const removeFromCart = (id) => dispatch({ type: "REMOVE", id });

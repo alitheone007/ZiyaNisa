@@ -1,25 +1,8 @@
 """
 ZiyaNisa — FastAPI backend.
-
-PHASE 1 (current):
-  - Visual preview homepage. Backend exposes seed/mock endpoints that mirror
-    the data shape used by the React frontend, so the homepage can be wired
-    to real APIs progressively.
-
-PENDING (next AI / phases):
-  - Auth (JWT email/password — call integration_playbook_expert_v2 first)
-  - Real product, category, cart, order, wishlist, review CRUD with MongoDB
-  - At-home service booking engine (matching, slots, OTPs)
-  - Beautician + vendor onboarding workflows + admin approval queue
-  - Admin dashboard endpoints (RBAC)
-  - Payment provider integration (Razorpay/Paytm — placeholders in .env)
-  - File/image upload (S3-style)
-
-A full Postgres-style data model reference is in
-`/app/backend/sql_schema_reference.sql` for local SQL testing.
 """
 
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -35,7 +18,6 @@ from datetime import datetime, timezone
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
@@ -44,58 +26,21 @@ app = FastAPI(title="ZiyaNisa API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
 
 
-# =========================================================================
-# Health / status (kept from template)
-# =========================================================================
+# ── Models ────────────────────────────────────────────────────────────────────
+
 class StatusCheck(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     client_name: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-
 class StatusCheckCreate(BaseModel):
     client_name: str
 
-
-@api_router.get("/")
-async def root():
-    return {"message": "ZiyaNisa API · K-Glow Beauty, Deccan Grace, Delivered to You."}
-
-
-@api_router.get("/health")
-async def health():
-    return {"status": "ok", "service": "ziyanisa-api", "version": "0.1.0"}
-
-
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_obj = StatusCheck(**input.model_dump())
-    doc = status_obj.model_dump()
-    doc["timestamp"] = doc["timestamp"].isoformat()
-    await db.status_checks.insert_one(doc)
-    return status_obj
-
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    rows = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    for r in rows:
-        if isinstance(r["timestamp"], str):
-            r["timestamp"] = datetime.fromisoformat(r["timestamp"])
-    return rows
-
-
-# =========================================================================
-# Seed / preview models — mirror frontend mocks so the UI can switch over
-# to real endpoints without changing shape.
-# PENDING(next-AI): persist these to MongoDB collections and add CRUD.
-# =========================================================================
 class Category(BaseModel):
     id: str
     label: str
     img: str
-
 
 class Product(BaseModel):
     id: str
@@ -110,7 +55,6 @@ class Product(BaseModel):
     actives: List[str] = []
     category_id: Optional[str] = None
 
-
 class Service(BaseModel):
     id: str
     name: str
@@ -121,81 +65,213 @@ class Service(BaseModel):
     level: str
     tag: str
 
+class Lead(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: str
+    source: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class LeadCreate(BaseModel):
+    email: str
+    source: str
+
+class Order(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    items: list
+    total: int
+    upi_ref: Optional[str] = None
+    status: str = "pending_payment"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class OrderCreate(BaseModel):
+    items: list
+    total: int
+    upi_ref: Optional[str] = None
+
+
+# ── Seed data ─────────────────────────────────────────────────────────────────
 
 CATEGORIES_SEED: List[dict] = [
-    {"id": "skincare", "label": "Skincare", "img": "https://images.pexels.com/photos/8131568/pexels-photo-8131568.jpeg"},
-    {"id": "haircare", "label": "Haircare", "img": "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&q=80"},
-    {"id": "makeup", "label": "Makeup", "img": "https://images.unsplash.com/photo-1522335789203-aaa2f6b6d3a4?w=800&q=80"},
-    {"id": "bath-body", "label": "Bath & Body", "img": "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&q=80"},
-    {"id": "fragrance", "label": "Fragrance & Ittar", "img": "https://images.unsplash.com/photo-1458538977777-0549b2370168?w=800&q=80"},
-    {"id": "jewellery", "label": "Jewellery", "img": "https://images.unsplash.com/photo-1693212793204-bcea856c75fe?w=800&q=80"},
-    {"id": "handbags", "label": "Handbags", "img": "https://images.unsplash.com/photo-1705909237050-7a7625b47fac?w=800&q=80"},
-    {"id": "tools", "label": "Beauty Tools", "img": "https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=800&q=80"},
-    {"id": "mens", "label": "Men's Grooming", "img": "https://images.unsplash.com/photo-1581375074612-d1fd0e661aeb?w=800&q=80"},
-    {"id": "bridal", "label": "Bridal & Occasion", "img": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80"},
+    {"id": "skincare",  "label": "Skincare",          "img": "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=800&q=80"},
+    {"id": "haircare",  "label": "Haircare",           "img": "https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=800&q=80"},
+    {"id": "makeup",    "label": "Makeup",             "img": "https://images.unsplash.com/photo-1586495777744-4e6232bf0340?w=800&q=80"},
+    {"id": "bath-body", "label": "Bath & Body",        "img": "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80"},
+    {"id": "fragrance", "label": "Fragrance & Ittar",  "img": "https://images.unsplash.com/photo-1543422655-ac1c6ca993ed?w=800&q=80"},
+    {"id": "jewellery", "label": "Jewellery",          "img": "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&q=80"},
+    {"id": "handbags",  "label": "Handbags",           "img": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&q=80"},
+    {"id": "tools",     "label": "Beauty Tools",       "img": "https://images.unsplash.com/photo-1598030304671-5aa1d6f9e78f?w=800&q=80"},
+    {"id": "mens",      "label": "Men's Grooming",     "img": "https://images.unsplash.com/photo-1581375074612-d1fd0e661aeb?w=800&q=80"},
+    {"id": "bridal",    "label": "Bridal & Occasion",  "img": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80"},
 ]
 
 PRODUCTS_SEED: List[dict] = [
-    {"id": "p1", "name": "SPF 50 Glow Shield", "brand": "SeoulSaffron", "price": 1299, "mrp": 1599,
-     "rating": 4.7, "reviews": 1284, "img": "https://images.unsplash.com/photo-1623676714504-edd78728155e?w=800&q=80",
-     "badges": ["K-Glow", "Clean Pick"], "actives": ["Saffron", "Niacinamide", "Ceramide"], "category_id": "skincare"},
-    {"id": "p2", "name": "10% Niacinamide Serum", "brand": "NoorActives", "price": 749, "mrp": 999,
-     "rating": 4.8, "reviews": 3210, "img": "https://images.pexels.com/photos/35899861/pexels-photo-35899861.jpeg",
-     "badges": ["Derm-Backed", "Vegan"], "actives": ["Niacinamide", "Zinc"], "category_id": "skincare"},
-    {"id": "p3", "name": "Ceramide Barrier Cream", "brand": "PearlRoot", "price": 1099, "mrp": 1399,
-     "rating": 4.6, "reviews": 942, "img": "https://images.unsplash.com/photo-1612817288484-6f916006741a?w=800&q=80",
-     "badges": ["K-Glow", "Fragrance-Free"], "actives": ["Ceramide", "Hyaluronic Acid"], "category_id": "skincare"},
-    {"id": "p4", "name": "Rice Water Gel Cleanser", "brand": "AquaZiya", "price": 549, "mrp": 699,
-     "rating": 4.5, "reviews": 1820, "img": "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=800&q=80",
-     "badges": ["Korean-Inspired"], "actives": ["Rice Water", "Centella"], "category_id": "skincare"},
+    # SKINCARE
+    {"id":"p-sk-01","name":"SPF 50 Glow Shield","brand":"SeoulSaffron","price":1299,"mrp":1599,"rating":4.7,"reviews":1284,"img":"https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&q=80","badges":["K-Glow","Clean Pick"],"actives":["Saffron","Niacinamide","Ceramide"],"category_id":"skincare"},
+    {"id":"p-sk-02","name":"10% Niacinamide Serum","brand":"NoorActives","price":749,"mrp":999,"rating":4.8,"reviews":3210,"img":"https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=800&q=80","badges":["Derm-Backed","Vegan"],"actives":["Niacinamide","Zinc"],"category_id":"skincare"},
+    {"id":"p-sk-03","name":"Ceramide Barrier Cream","brand":"PearlRoot","price":1099,"mrp":1399,"rating":4.6,"reviews":942,"img":"https://images.unsplash.com/photo-1612817288484-6f916006741a?w=800&q=80","badges":["K-Glow","Fragrance-Free"],"actives":["Ceramide","Hyaluronic Acid"],"category_id":"skincare"},
+    {"id":"p-sk-04","name":"Rice Water Gel Cleanser","brand":"AquaZiya","price":549,"mrp":699,"rating":4.5,"reviews":1820,"img":"https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=800&q=80","badges":["Korean-Inspired"],"actives":["Rice Water","Centella"],"category_id":"skincare"},
+    {"id":"p-sk-05","name":"Rose Mist Toner","brand":"Deccan Dew","price":499,"mrp":649,"rating":4.4,"reviews":612,"img":"https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?w=800&q=80","badges":["Organic"],"actives":["Rose","Aloe Vera"],"category_id":"skincare"},
+    {"id":"p-sk-06","name":"Aloe Saffron Moisturizer","brand":"Nisa Botanics","price":899,"mrp":1199,"rating":4.7,"reviews":2104,"img":"https://images.unsplash.com/photo-1601049676869-702ea24cfd58?w=800&q=80","badges":["Clean Pick","Cruelty-Free"],"actives":["Saffron","Aloe Vera"],"category_id":"skincare"},
+    {"id":"p-sk-07","name":"Vitamin C Brightening Drops","brand":"GlowSutra","price":1199,"mrp":1499,"rating":4.6,"reviews":1543,"img":"https://images.unsplash.com/photo-1567721913486-6585f069b406?w=800&q=80","badges":["Derm-Backed"],"actives":["Vitamin C","Ferulic Acid"],"category_id":"skincare"},
+    {"id":"p-sk-08","name":"Lip Repair Balm","brand":"RoseCeramide","price":349,"mrp":449,"rating":4.5,"reviews":880,"img":"https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&q=80","badges":["Bridal Favorite"],"actives":["Shea","Ceramide"],"category_id":"skincare"},
+    {"id":"p-sk-09","name":"Hyaluronic Eye Gel","brand":"KoraCare","price":649,"mrp":849,"rating":4.6,"reviews":710,"img":"https://images.unsplash.com/photo-1598452963314-b09f397a5c48?w=800&q=80","badges":["K-Glow"],"actives":["HA","Peptides"],"category_id":"skincare"},
+    {"id":"p-sk-10","name":"Retinol Night Renewal Cream","brand":"NoorActives","price":1399,"mrp":1799,"rating":4.7,"reviews":1102,"img":"https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=800&q=80","badges":["Derm-Backed"],"actives":["Retinol","Bakuchiol","Ceramide"],"category_id":"skincare"},
+    # HAIRCARE
+    {"id":"p-hc-01","name":"Rice Protein Shampoo","brand":"KoraCare","price":399,"mrp":499,"rating":4.5,"reviews":1340,"img":"https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=800&q=80","badges":["Sulfate-Free"],"actives":["Rice Protein","Biotin"],"category_id":"haircare"},
+    {"id":"p-hc-02","name":"Bhringraj Hair Oil","brand":"NisaRoots","price":449,"mrp":599,"rating":4.7,"reviews":2890,"img":"https://images.unsplash.com/photo-1559595500-e15296712d55?w=800&q=80","badges":["Ayurvedic"],"actives":["Bhringraj","Amla","Coconut"],"category_id":"haircare"},
+    {"id":"p-hc-03","name":"Keratin Repair Mask","brand":"SilkNisa","price":799,"mrp":999,"rating":4.6,"reviews":980,"img":"https://images.unsplash.com/photo-1628528402885-d9a9a6dcabb1?w=800&q=80","badges":["Salon-Grade"],"actives":["Keratin","Argan","Protein"],"category_id":"haircare"},
+    {"id":"p-hc-04","name":"Onion Black Seed Oil","brand":"NisaRoots","price":349,"mrp":449,"rating":4.8,"reviews":4210,"img":"https://images.unsplash.com/photo-1519825933820-54e4a53b85a5?w=800&q=80","badges":["Ayurvedic","Bestseller"],"actives":["Onion","Kalonji","Castor"],"category_id":"haircare"},
+    {"id":"p-hc-05","name":"Fenugreek Scalp Serum","brand":"GlowSutra","price":699,"mrp":899,"rating":4.5,"reviews":560,"img":"https://images.unsplash.com/photo-1574870111867-089730e5a72b?w=800&q=80","badges":["Anti-Dandruff"],"actives":["Fenugreek","Salicylic Acid"],"category_id":"haircare"},
+    {"id":"p-hc-06","name":"Argan Shine Conditioner","brand":"SilkNisa","price":499,"mrp":649,"rating":4.4,"reviews":830,"img":"https://images.unsplash.com/photo-1599552900626-2cc58bb15e00?w=800&q=80","badges":["Vegan"],"actives":["Argan","Vitamin E"],"category_id":"haircare"},
+    {"id":"p-hc-07","name":"Anti-Frizz Serum","brand":"KoraCare","price":549,"mrp":699,"rating":4.6,"reviews":1230,"img":"https://images.unsplash.com/photo-1524000835948-7980f3e1cc63?w=800&q=80","badges":["Heat-Protect"],"actives":["Silicone-Free","Camellia Oil"],"category_id":"haircare"},
+    {"id":"p-hc-08","name":"Biotin Growth Drops","brand":"NoorActives","price":899,"mrp":1199,"rating":4.7,"reviews":1780,"img":"https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&q=80","badges":["Clinically Tested"],"actives":["Biotin","Redensyl","Caffeine"],"category_id":"haircare"},
+    {"id":"p-hc-09","name":"Hair Detox Scalp Scrub","brand":"AquaZiya","price":449,"mrp":599,"rating":4.3,"reviews":490,"img":"https://images.unsplash.com/photo-1600857062241-98e5dba7f025?w=800&q=80","badges":["Clean Pick"],"actives":["Sea Salt","Peppermint","AHA"],"category_id":"haircare"},
+    {"id":"p-hc-10","name":"Cold Press Coconut Hair Butter","brand":"Deccan Dew","price":299,"mrp":399,"rating":4.5,"reviews":2100,"img":"https://images.unsplash.com/photo-1585238341710-4d3ff484184d?w=800&q=80","badges":["Organic"],"actives":["Coconut","Shea","Hibiscus"],"category_id":"haircare"},
+    # MAKEUP
+    {"id":"p-mk-01","name":"Saffron Glow Foundation","brand":"NisaBeauty","price":999,"mrp":1299,"rating":4.6,"reviews":1450,"img":"https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=800&q=80","badges":["SPF 20","Vegan"],"actives":["Saffron","Hyaluronic Acid"],"category_id":"makeup"},
+    {"id":"p-mk-02","name":"Kajal Kohl Liner","brand":"KoraCare","price":199,"mrp":249,"rating":4.8,"reviews":5420,"img":"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80","badges":["Waterproof","Bestseller"],"actives":["Kohl","Vitamin E"],"category_id":"makeup"},
+    {"id":"p-mk-03","name":"Rose Velvet Lipstick","brand":"NisaBeauty","price":399,"mrp":499,"rating":4.7,"reviews":2380,"img":"https://images.unsplash.com/photo-1586495777744-4e6232bf0340?w=800&q=80","badges":["Long-Lasting"],"actives":["Shea","Jojoba"],"category_id":"makeup"},
+    {"id":"p-mk-04","name":"K-Glow Highlighter Palette","brand":"GlowSutra","price":849,"mrp":1099,"rating":4.8,"reviews":1780,"img":"https://images.unsplash.com/photo-1512207736890-6ffed8a84e8d?w=800&q=80","badges":["K-Glow"],"actives":["Pearl","Mica"],"category_id":"makeup"},
+    {"id":"p-mk-05","name":"CC Cream SPF 30","brand":"SeoulSaffron","price":749,"mrp":999,"rating":4.5,"reviews":960,"img":"https://images.unsplash.com/photo-1503236823255-94609f598e71?w=800&q=80","badges":["SPF 30","K-Beauty"],"actives":["Niacinamide","Ceramide"],"category_id":"makeup"},
+    {"id":"p-mk-06","name":"Volume Mascara","brand":"NisaBeauty","price":449,"mrp":549,"rating":4.6,"reviews":1120,"img":"https://images.unsplash.com/photo-1583241475880-083f84372725?w=800&q=80","badges":["Waterproof"],"actives":["Vitamin B5","Beeswax"],"category_id":"makeup"},
+    {"id":"p-mk-07","name":"Nude Glow Eyeshadow Palette","brand":"GlowSutra","price":1199,"mrp":1499,"rating":4.7,"reviews":2040,"img":"https://images.unsplash.com/photo-1522335789203-aaa2f6b6d3a4?w=800&q=80","badges":["Derm-Backed"],"actives":["Mica","Jojoba"],"category_id":"makeup"},
+    {"id":"p-mk-08","name":"Brow Definer Pencil","brand":"KoraCare","price":299,"mrp":399,"rating":4.5,"reviews":870,"img":"https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=800&q=80","badges":["Vegan"],"actives":["Carnauba Wax"],"category_id":"makeup"},
+    {"id":"p-mk-09","name":"Dewy Setting Mist","brand":"AquaZiya","price":499,"mrp":649,"rating":4.6,"reviews":1310,"img":"https://images.unsplash.com/photo-1598452963314-b09f397a5c48?w=800&q=80","badges":["Clean Pick"],"actives":["Rose Water","Glycerin"],"category_id":"makeup"},
+    {"id":"p-mk-10","name":"Blush Duo — Peach & Rose","brand":"NisaBeauty","price":649,"mrp":849,"rating":4.7,"reviews":930,"img":"https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=800&q=80","badges":["Buildable"],"actives":["Pearl","Mica","Vitamin E"],"category_id":"makeup"},
+    # BATH & BODY
+    {"id":"p-bb-01","name":"Sandalwood Body Butter","brand":"Deccan Dew","price":699,"mrp":899,"rating":4.8,"reviews":1680,"img":"https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80","badges":["Organic","Vegan"],"actives":["Sandalwood","Shea","Vitamin E"],"category_id":"bath-body"},
+    {"id":"p-bb-02","name":"Rose Petal Body Scrub","brand":"Nisa Botanics","price":549,"mrp":699,"rating":4.6,"reviews":1040,"img":"https://images.unsplash.com/photo-1584815231895-b19b75b18f23?w=800&q=80","badges":["Clean Pick"],"actives":["Rose","Sugar","Jojoba Beads"],"category_id":"bath-body"},
+    {"id":"p-bb-03","name":"Kumkumadi Body Oil","brand":"NisaRoots","price":849,"mrp":1099,"rating":4.7,"reviews":870,"img":"https://images.unsplash.com/photo-1536308537997-e0b15a5b6d4a?w=800&q=80","badges":["Ayurvedic"],"actives":["Saffron","Kumkumadi","Sesame"],"category_id":"bath-body"},
+    {"id":"p-bb-04","name":"Jasmine Shower Gel","brand":"AquaZiya","price":399,"mrp":499,"rating":4.4,"reviews":760,"img":"https://images.unsplash.com/photo-1612785604403-e97e5d8df1d8?w=800&q=80","badges":["SLS-Free"],"actives":["Jasmine","Aloe","Glycerin"],"category_id":"bath-body"},
+    {"id":"p-bb-05","name":"Ubtan Brightening Pack","brand":"NisaRoots","price":349,"mrp":449,"rating":4.8,"reviews":3210,"img":"https://images.unsplash.com/photo-1590080876351-41db8d0d8e91?w=800&q=80","badges":["Ayurvedic","Bestseller"],"actives":["Turmeric","Sandalwood","Chickpea"],"category_id":"bath-body"},
+    {"id":"p-bb-06","name":"Coffee Body Polisher","brand":"GlowSutra","price":449,"mrp":599,"rating":4.6,"reviews":920,"img":"https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&q=80","badges":["Vegan"],"actives":["Coffee","Coconut","Sea Salt"],"category_id":"bath-body"},
+    {"id":"p-bb-07","name":"Neem Antibacterial Soap","brand":"Nisa Botanics","price":149,"mrp":199,"rating":4.5,"reviews":4580,"img":"https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=800&q=80","badges":["Ayurvedic"],"actives":["Neem","Turmeric","Tulsi"],"category_id":"bath-body"},
+    {"id":"p-bb-08","name":"Foot Repair Cream","brand":"Deccan Dew","price":299,"mrp":399,"rating":4.5,"reviews":640,"img":"https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&q=80","badges":["Intensive Care"],"actives":["Urea","Shea","Peppermint"],"category_id":"bath-body"},
+    {"id":"p-bb-09","name":"Under-Arm Brightener Serum","brand":"GlowSutra","price":499,"mrp":649,"rating":4.4,"reviews":510,"img":"https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&q=80","badges":["Derm-Backed"],"actives":["Kojic Acid","Niacinamide","AHA"],"category_id":"bath-body"},
+    {"id":"p-bb-10","name":"Hand & Nail Cream","brand":"Nisa Botanics","price":249,"mrp":329,"rating":4.6,"reviews":1450,"img":"https://images.unsplash.com/photo-1601049676869-702ea24cfd58?w=800&q=80","badges":["Vegan"],"actives":["Rose Hip","Biotin","Glycerin"],"category_id":"bath-body"},
+    # FRAGRANCE
+    {"id":"p-fr-01","name":"Oud Bloom Ittar","brand":"Deccan Dew","price":1299,"mrp":1599,"rating":4.9,"reviews":2340,"img":"https://images.unsplash.com/photo-1543422655-ac1c6ca993ed?w=800&q=80","badges":["Pure Attar"],"actives":["Oud","Rose","Resin"],"category_id":"fragrance"},
+    {"id":"p-fr-02","name":"Saffron Veil Attar","brand":"Deccan Dew","price":1499,"mrp":1999,"rating":4.8,"reviews":1120,"img":"https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=800&q=80","badges":["Pure Attar"],"actives":["Saffron","Amber","Musk"],"category_id":"fragrance"},
+    {"id":"p-fr-03","name":"Sandal Mist EDP","brand":"Nisa Atelier","price":1899,"mrp":2499,"rating":4.7,"reviews":890,"img":"https://images.unsplash.com/photo-1458538977777-0549b2370168?w=800&q=80","badges":["Long-Lasting"],"actives":["Sandalwood","Vanilla","Vetiver"],"category_id":"fragrance"},
+    {"id":"p-fr-04","name":"Hyderabadi Rose EDP","brand":"Nisa Atelier","price":2199,"mrp":2799,"rating":4.8,"reviews":740,"img":"https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=800&q=80","badges":["Bridal Favorite"],"actives":["Damask Rose","Honey","Jasmine"],"category_id":"fragrance"},
+    {"id":"p-fr-05","name":"Oud Noir Parfum","brand":"Deccan Dew","price":2999,"mrp":3999,"rating":4.9,"reviews":460,"img":"https://images.unsplash.com/photo-1547887538-047fd1ec4e72?w=800&q=80","badges":["Pure Oud"],"actives":["Oud","Patchouli","Amber"],"category_id":"fragrance"},
+    {"id":"p-fr-06","name":"Jasmine Musk Body Spray","brand":"AquaZiya","price":599,"mrp":799,"rating":4.5,"reviews":1890,"img":"https://images.unsplash.com/photo-1523293182086-7651a899d37f?w=800&q=80","badges":["Everyday Wear"],"actives":["Jasmine","White Musk"],"category_id":"fragrance"},
+    {"id":"p-fr-07","name":"Amber Wood Cologne","brand":"Nisa Atelier","price":1699,"mrp":2199,"rating":4.6,"reviews":570,"img":"https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?w=800&q=80","badges":["Unisex"],"actives":["Amber","Cedarwood","Bergamot"],"category_id":"fragrance"},
+    {"id":"p-fr-08","name":"Rose Oud Attar Oil","brand":"Deccan Dew","price":999,"mrp":1299,"rating":4.7,"reviews":1340,"img":"https://images.unsplash.com/photo-1594032194509-0056023973b2?w=800&q=80","badges":["Pure Attar","No Alcohol"],"actives":["Rose","Oud"],"category_id":"fragrance"},
+    {"id":"p-fr-09","name":"Champagne Bloom EDP","brand":"Nisa Atelier","price":2499,"mrp":3199,"rating":4.7,"reviews":380,"img":"https://images.unsplash.com/photo-1528740561666-dc2479dc08ab?w=800&q=80","badges":["Luxury"],"actives":["Champagne Rose","Peach","Musk"],"category_id":"fragrance"},
+    {"id":"p-fr-10","name":"Black Amber Parfum","brand":"Deccan Dew","price":1799,"mrp":2299,"rating":4.8,"reviews":510,"img":"https://images.unsplash.com/photo-1518302057130-f72e1ab36f1b?w=800&q=80","badges":["Intense"],"actives":["Black Musk","Amber","Labdanum"],"category_id":"fragrance"},
+    # JEWELLERY
+    {"id":"p-jw-01","name":"Ziya Pearl Drop Earrings","brand":"Nisa Atelier","price":2499,"mrp":3199,"rating":4.9,"reviews":870,"img":"https://images.pexels.com/photos/36772547/pexels-photo-36772547.jpeg?auto=compress&w=800","badges":["Bridal","Bestseller"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-02","name":"Champagne Halo Necklace","brand":"Nisa Atelier","price":4299,"mrp":5499,"rating":4.8,"reviews":540,"img":"https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&q=80","badges":["Gold-Plated"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-03","name":"Bridal Kundan Set","brand":"Nisa Atelier","price":8999,"mrp":11999,"rating":4.9,"reviews":310,"img":"https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&q=80","badges":["Bridal","Handcrafted"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-04","name":"Gold Layered Anklet","brand":"NisaGold","price":999,"mrp":1299,"rating":4.6,"reviews":720,"img":"https://images.unsplash.com/photo-1573408301185-9519f94eae1c?w=800&q=80","badges":["Gold-Plated"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-05","name":"Emerald Stud Earrings","brand":"NisaGold","price":1799,"mrp":2299,"rating":4.7,"reviews":430,"img":"https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=800&q=80","badges":["Statement"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-06","name":"Maang Tikka — Temple Gold","brand":"Nisa Atelier","price":1599,"mrp":1999,"rating":4.8,"reviews":640,"img":"https://images.unsplash.com/photo-1599459182681-c938b7a53fd0?w=800&q=80","badges":["Bridal","Traditional"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-07","name":"Floral Polki Ring","brand":"NisaGold","price":1299,"mrp":1699,"rating":4.7,"reviews":390,"img":"https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&q=80","badges":["Handcrafted"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-08","name":"Temple Gold Choker","brand":"Nisa Atelier","price":3499,"mrp":4499,"rating":4.8,"reviews":490,"img":"https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?w=800&q=80","badges":["Bridal","Bestseller"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-09","name":"Diamond-Cut Bangle Pair","brand":"NisaGold","price":2299,"mrp":2999,"rating":4.6,"reviews":350,"img":"https://images.unsplash.com/photo-1609783695042-5c3e9c7f8bc9?w=800&q=80","badges":["Gold-Plated"],"actives":[],"category_id":"jewellery"},
+    {"id":"p-jw-10","name":"Enamel Peacock Bracelet","brand":"Nisa Atelier","price":1199,"mrp":1499,"rating":4.7,"reviews":610,"img":"https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=800&q=80","badges":["Statement"],"actives":[],"category_id":"jewellery"},
+    # HANDBAGS
+    {"id":"p-hb-01","name":"Gold Thread Clutch","brand":"Nisa Atelier","price":3199,"mrp":3999,"rating":4.8,"reviews":420,"img":"https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&q=80","badges":["Bridal Favorite"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-02","name":"Silk Potli Bag","brand":"Nisa Atelier","price":1499,"mrp":1899,"rating":4.7,"reviews":730,"img":"https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=800&q=80","badges":["Handcrafted"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-03","name":"Beaded Minaudière","brand":"Nisa Atelier","price":2299,"mrp":2999,"rating":4.6,"reviews":310,"img":"https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800&q=80","badges":["Occasion Wear"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-04","name":"Zardosi Evening Bag","brand":"Nisa Atelier","price":2799,"mrp":3499,"rating":4.8,"reviews":270,"img":"https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=800&q=80","badges":["Handcrafted","Bridal"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-05","name":"Caramel Leather Sling","brand":"NisaLeather","price":1899,"mrp":2499,"rating":4.5,"reviews":560,"img":"https://images.unsplash.com/photo-1517686469429-8bdb88b9f907?w=800&q=80","badges":["Everyday"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-06","name":"Velvet Box Clutch","brand":"Nisa Atelier","price":1699,"mrp":2199,"rating":4.7,"reviews":390,"img":"https://images.unsplash.com/photo-1547619292-240402b5ae5d?w=800&q=80","badges":["Occasion Wear"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-07","name":"Embroidered Shoulder Bag","brand":"Nisa Atelier","price":2199,"mrp":2799,"rating":4.6,"reviews":480,"img":"https://images.unsplash.com/photo-1582142306909-195724d33ffc?w=800&q=80","badges":["Handcrafted"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-08","name":"Pearl Handle Bucket Bag","brand":"NisaLeather","price":2599,"mrp":3299,"rating":4.7,"reviews":340,"img":"https://images.unsplash.com/photo-1601593346740-925612772716?w=800&q=80","badges":["Statement"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-09","name":"Mirror Work Tote","brand":"Nisa Atelier","price":1999,"mrp":2599,"rating":4.6,"reviews":410,"img":"https://images.unsplash.com/photo-1509069983856-2a8fe24b0f02?w=800&q=80","badges":["Handcrafted"],"actives":[],"category_id":"handbags"},
+    {"id":"p-hb-10","name":"Nisa Monogram Canvas Bag","brand":"NisaLeather","price":3499,"mrp":4499,"rating":4.8,"reviews":290,"img":"https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&q=80","badges":["Signature"],"actives":[],"category_id":"handbags"},
+    # BEAUTY TOOLS
+    {"id":"p-bt-01","name":"Rose Quartz Face Roller","brand":"KoraCare","price":799,"mrp":999,"rating":4.7,"reviews":2140,"img":"https://images.unsplash.com/photo-1598030304671-5aa1d6f9e78f?w=800&q=80","badges":["Anti-Puffiness"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-02","name":"Jade Gua Sha Stone","brand":"KoraCare","price":599,"mrp":799,"rating":4.8,"reviews":1870,"img":"https://images.unsplash.com/photo-1611080626919-7cf5a9dbab12?w=800&q=80","badges":["K-Glow","Lymphatic Drain"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-03","name":"Ice Globe Face Massager","brand":"GlowSutra","price":899,"mrp":1199,"rating":4.6,"reviews":980,"img":"https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=800&q=80","badges":["Anti-Redness"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-04","name":"Electric Cleansing Brush","brand":"KoraCare","price":1499,"mrp":1999,"rating":4.5,"reviews":1340,"img":"https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=800&q=80","badges":["Deep Clean"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-05","name":"Lash Curler — Rose Gold","brand":"NisaBeauty","price":349,"mrp":449,"rating":4.4,"reviews":720,"img":"https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&q=80","badges":["Gentle Curl"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-06","name":"LED Face Mask 7-Colour","brand":"GlowSutra","price":3999,"mrp":5499,"rating":4.7,"reviews":540,"img":"https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=800&q=80","badges":["Clinically Tested"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-07","name":"Pore Vacuum Mini","brand":"KoraCare","price":1299,"mrp":1699,"rating":4.5,"reviews":890,"img":"https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&q=80","badges":["Blackhead Removal"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-08","name":"Dermaplaning Tool","brand":"NoorActives","price":699,"mrp":899,"rating":4.3,"reviews":430,"img":"https://images.unsplash.com/photo-1583241800698-e8ab01830a41?w=800&q=80","badges":["Peach Fuzz Remove"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-09","name":"Ultrasonic Skin Scrubber","brand":"GlowSutra","price":1799,"mrp":2399,"rating":4.6,"reviews":670,"img":"https://images.unsplash.com/photo-1532413992378-f169ac26fff0?w=800&q=80","badges":["Deep Exfoliant"],"actives":[],"category_id":"tools"},
+    {"id":"p-bt-10","name":"Micro-Dermaroller 0.3mm","brand":"NoorActives","price":499,"mrp":699,"rating":4.4,"reviews":810,"img":"https://images.unsplash.com/photo-1515879218367-8466d910aaa4?w=800&q=80","badges":["Collagen Boost"],"actives":[],"category_id":"tools"},
+    # MEN'S GROOMING
+    {"id":"p-mg-01","name":"Charcoal Face Wash","brand":"ZiyaMen","price":349,"mrp":449,"rating":4.6,"reviews":2340,"img":"https://images.unsplash.com/photo-1581375074612-d1fd0e661aeb?w=800&q=80","badges":["Deep Clean"],"actives":["Charcoal","Salicylic Acid"],"category_id":"mens"},
+    {"id":"p-mg-02","name":"Beard Oil — Oud & Cedar","brand":"ZiyaMen","price":599,"mrp":799,"rating":4.8,"reviews":1870,"img":"https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800&q=80","badges":["Bestseller"],"actives":["Oud","Cedarwood","Jojoba"],"category_id":"mens"},
+    {"id":"p-mg-03","name":"Sport SPF 50 Moisturizer","brand":"NoorActives","price":799,"mrp":1099,"rating":4.5,"reviews":980,"img":"https://images.unsplash.com/photo-1612817288484-6f916006741a?w=800&q=80","badges":["SPF 50","Matte"],"actives":["Niacinamide","SPF","Hyaluronic"],"category_id":"mens"},
+    {"id":"p-mg-04","name":"Activated Charcoal Mask","brand":"ZiyaMen","price":399,"mrp":499,"rating":4.5,"reviews":1230,"img":"https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800&q=80","badges":["Pore Care"],"actives":["Charcoal","Kaolin","Tea Tree"],"category_id":"mens"},
+    {"id":"p-mg-05","name":"Under-Eye Dark Circle Serum","brand":"NoorActives","price":749,"mrp":999,"rating":4.6,"reviews":710,"img":"https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?w=800&q=80","badges":["Derm-Backed"],"actives":["Vitamin K","Caffeine","Peptides"],"category_id":"mens"},
+    {"id":"p-mg-06","name":"Hair Pomade — Matte Finish","brand":"ZiyaMen","price":349,"mrp":449,"rating":4.4,"reviews":890,"img":"https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=800&q=80","badges":["Strong Hold"],"actives":["Beeswax","Lanolin"],"category_id":"mens"},
+    {"id":"p-mg-07","name":"Aloe Shaving Gel","brand":"AquaZiya","price":249,"mrp":329,"rating":4.5,"reviews":1560,"img":"https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=800&q=80","badges":["Sensitive Skin"],"actives":["Aloe","Glycerin","Chamomile"],"category_id":"mens"},
+    {"id":"p-mg-08","name":"Post-Shave Balm","brand":"ZiyaMen","price":299,"mrp":399,"rating":4.6,"reviews":1100,"img":"https://images.unsplash.com/photo-1556228853-80b6e5eeff06?w=800&q=80","badges":["Anti-Irritation"],"actives":["Allantoin","Witch Hazel","Aloe"],"category_id":"mens"},
+    {"id":"p-mg-09","name":"Neem Tea Tree Soap","brand":"NisaRoots","price":149,"mrp":199,"rating":4.5,"reviews":3400,"img":"https://images.unsplash.com/photo-1584815231895-b19b75b18f23?w=800&q=80","badges":["Antibacterial"],"actives":["Neem","Tea Tree","Salicylic Acid"],"category_id":"mens"},
+    {"id":"p-mg-10","name":"Men's Anti-Aging Serum","brand":"NoorActives","price":999,"mrp":1299,"rating":4.7,"reviews":630,"img":"https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=800&q=80","badges":["Derm-Backed"],"actives":["Retinol","Peptides","Niacinamide"],"category_id":"mens"},
+    # BRIDAL
+    {"id":"p-br-01","name":"Bridal Noor Makeup Kit","brand":"NisaBeauty","price":4999,"mrp":6499,"rating":4.9,"reviews":430,"img":"https://images.unsplash.com/photo-1522335789203-aaa2f6b6d3a4?w=800&q=80","badges":["Bridal Essential"],"actives":[],"category_id":"bridal"},
+    {"id":"p-br-02","name":"Mehendi Prep Brightening Serum","brand":"GlowSutra","price":849,"mrp":1099,"rating":4.7,"reviews":560,"img":"https://images.unsplash.com/photo-1567721913486-6585f069b406?w=800&q=80","badges":["Bridal"],"actives":["Vitamin C","AHA","Niacinamide"],"category_id":"bridal"},
+    {"id":"p-br-03","name":"Bridal Glow Sheet Mask","brand":"SeoulSaffron","price":299,"mrp":399,"rating":4.8,"reviews":1840,"img":"https://images.unsplash.com/photo-1598452963314-b09f397a5c48?w=800&q=80","badges":["K-Glow","Wedding Day"],"actives":["Saffron","HA","Collagen"],"category_id":"bridal"},
+    {"id":"p-br-04","name":"Saffron Bridal Cream","brand":"Nisa Botanics","price":1299,"mrp":1699,"rating":4.8,"reviews":790,"img":"https://images.unsplash.com/photo-1612817288484-6f916006741a?w=800&q=80","badges":["Bridal","Glow"],"actives":["Saffron","Pearl","Kumkumadi"],"category_id":"bridal"},
+    {"id":"p-br-05","name":"Bridal Red Lip Set","brand":"NisaBeauty","price":899,"mrp":1199,"rating":4.8,"reviews":870,"img":"https://images.unsplash.com/photo-1586495777744-4e6232bf0340?w=800&q=80","badges":["Bridal","Long-Lasting"],"actives":["Shea","Vitamin E"],"category_id":"bridal"},
+    {"id":"p-br-06","name":"Kohl & Liner Bridal Set","brand":"NisaBeauty","price":599,"mrp":799,"rating":4.7,"reviews":640,"img":"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80","badges":["Bridal","Waterproof"],"actives":["Kohl","Vitamin E"],"category_id":"bridal"},
+    {"id":"p-br-07","name":"Bridal Luminizer Drops","brand":"GlowSutra","price":699,"mrp":899,"rating":4.6,"reviews":510,"img":"https://images.unsplash.com/photo-1619451334792-150fd785ee74?w=800&q=80","badges":["Highlighter"],"actives":["Pearl","Rose Gold Mica"],"category_id":"bridal"},
+    {"id":"p-br-08","name":"Jasmine Bridal Body Mist","brand":"Deccan Dew","price":549,"mrp":699,"rating":4.7,"reviews":1230,"img":"https://images.unsplash.com/photo-1523293182086-7651a899d37f?w=800&q=80","badges":["Bridal","Long-Lasting"],"actives":["Jasmine","Sandalwood","Rose"],"category_id":"bridal"},
+    {"id":"p-br-09","name":"Ubtan Bridal Pack","brand":"NisaRoots","price":499,"mrp":649,"rating":4.9,"reviews":3210,"img":"https://images.unsplash.com/photo-1590080876351-41db8d0d8e91?w=800&q=80","badges":["Ayurvedic","Glow"],"actives":["Turmeric","Sandalwood","Rose"],"category_id":"bridal"},
+    {"id":"p-br-10","name":"Wedding Day Touch-Up Kit","brand":"NisaBeauty","price":1499,"mrp":1999,"rating":4.8,"reviews":720,"img":"https://images.unsplash.com/photo-1503236823255-94609f598e71?w=800&q=80","badges":["Bridal Essential"],"actives":[],"category_id":"bridal"},
 ]
 
 SERVICES_SEED: List[dict] = [
-    {"id": "s1", "name": "Korean Glow Facial", "duration": "75 min", "price": 1499, "rating": 4.9,
-     "img": "https://images.pexels.com/photos/30809943/pexels-photo-30809943.jpeg", "level": "Senior", "tag": "K-Glow"},
-    {"id": "s2", "name": "Saffron Brightening Cleanup", "duration": "45 min", "price": 799, "rating": 4.7,
-     "img": "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80", "level": "Trained", "tag": "Best Seller"},
-    {"id": "s3", "name": "Bridal Noor Makeup", "duration": "180 min", "price": 11999, "rating": 4.9,
-     "img": "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&q=80", "level": "Bridal Expert", "tag": "Bridal"},
-    {"id": "s4", "name": "Pearl Pedicure", "duration": "60 min", "price": 899, "rating": 4.6,
-     "img": "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&q=80", "level": "Trained", "tag": "Relax"},
+    {"id":"s1","name":"Korean Glow Facial","duration":"75 min","price":1499,"rating":4.9,"img":"https://images.pexels.com/photos/30809943/pexels-photo-30809943.jpeg","level":"Senior","tag":"K-Glow"},
+    {"id":"s2","name":"Saffron Brightening Cleanup","duration":"45 min","price":799,"rating":4.7,"img":"https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80","level":"Trained","tag":"Best Seller"},
+    {"id":"s3","name":"Bridal Noor Makeup","duration":"180 min","price":11999,"rating":4.9,"img":"https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=800&q=80","level":"Bridal Expert","tag":"Bridal"},
+    {"id":"s4","name":"Pearl Pedicure","duration":"60 min","price":899,"rating":4.6,"img":"https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&q=80","level":"Trained","tag":"Relax"},
 ]
 
 
-@api_router.get("/seed/categories", response_model=List[Category])
-async def seed_categories():
-    return CATEGORIES_SEED
+# ── Health endpoints ───────────────────────────────────────────────────────────
+
+@api_router.get("/")
+async def root():
+    return {"message": "ZiyaNisa API · K-Glow Beauty, Deccan Grace, Delivered to You."}
+
+@api_router.get("/health")
+async def health():
+    return {"status": "ok", "service": "ziyanisa-api", "version": "0.1.0"}
+
+@api_router.post("/status", response_model=StatusCheck)
+async def create_status_check(input: StatusCheckCreate):
+    obj = StatusCheck(**input.model_dump())
+    doc = obj.model_dump()
+    doc["timestamp"] = doc["timestamp"].isoformat()
+    await db.status_checks.insert_one(doc)
+    return obj
+
+@api_router.get("/status", response_model=List[StatusCheck])
+async def get_status_checks():
+    rows = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+    for r in rows:
+        if isinstance(r["timestamp"], str):
+            r["timestamp"] = datetime.fromisoformat(r["timestamp"])
+    return rows
 
 
-@api_router.get("/seed/products", response_model=List[Product])
-async def seed_products():
-    return PRODUCTS_SEED
-
-
-@api_router.get("/seed/services", response_model=List[Service])
-async def seed_services():
-    return SERVICES_SEED
-
-
-# =========================================================================
-# Product / Category / Service CRUD endpoints.
-# Currently served from in-memory seed data.
-# PENDING(next-AI): replace seed lists with MongoDB read/write operations.
-# =========================================================================
-from fastapi import HTTPException, Query
-
+# ── Catalog endpoints ──────────────────────────────────────────────────────────
 
 @api_router.get("/categories", response_model=List[Category])
 async def get_categories():
     return CATEGORIES_SEED
 
-
 @api_router.get("/products", response_model=List[Product])
-async def get_products(category: Optional[str] = Query(None)):
+async def get_products(
+    category: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+):
+    results = PRODUCTS_SEED
     if category:
-        return [p for p in PRODUCTS_SEED if p.get("category_id") == category]
-    return PRODUCTS_SEED
-
+        results = [p for p in results if p.get("category_id") == category]
+    if q:
+        q_lower = q.lower()
+        results = [p for p in results if q_lower in p["name"].lower() or q_lower in p["brand"].lower()]
+    return results
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str):
@@ -204,28 +280,12 @@ async def get_product(product_id: str):
         raise HTTPException(status_code=404, detail="Product not found")
     return product
 
-
 @api_router.get("/services", response_model=List[Service])
 async def get_services():
     return SERVICES_SEED
 
 
-# =========================================================================
-# Lead capture endpoints (waitlist + newsletter)
-# Stored in MongoDB so leads survive restarts even at MVP stage.
-# =========================================================================
-class Lead(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: str
-    source: str  # "ittar_waitlist" | "newsletter"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class LeadCreate(BaseModel):
-    email: str
-    source: str
-
+# ── Lead capture ───────────────────────────────────────────────────────────────
 
 @api_router.post("/leads", response_model=Lead)
 async def create_lead(payload: LeadCreate):
@@ -236,37 +296,59 @@ async def create_lead(payload: LeadCreate):
     return lead
 
 
-# =========================================================================
-# Payments — PLACEHOLDER MODULE (NOT IMPLEMENTED YET).
-# Reads provider keys from environment so the next AI can drop in
-# Razorpay / Paytm without touching auth or routing.
-# Required env vars (already declared in /app/backend/.env as empty):
-#   - RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
-#   - PAYTM_MERCHANT_ID,  PAYTM_MERCHANT_KEY,  PAYTM_WEBSITE, PAYTM_INDUSTRY_TYPE
-# PENDING(next-AI):
-#   1. call integration_playbook_expert_v2 for Razorpay + Paytm playbooks
-#   2. implement create_order / verify_signature / webhook handlers
-#   3. wire to /api/orders + /api/bookings on confirmation
-# =========================================================================
-PAYMENT_PROVIDERS = {
-    "razorpay": {
-        "enabled": bool(os.environ.get("RAZORPAY_KEY_ID")),
-        "key_id_env": "RAZORPAY_KEY_ID",
-    },
-    "paytm": {
-        "enabled": bool(os.environ.get("PAYTM_MERCHANT_ID")),
-        "merchant_id_env": "PAYTM_MERCHANT_ID",
-    },
+# ── Orders (UPI confirmation flow) ────────────────────────────────────────────
+
+@api_router.post("/orders", response_model=Order)
+async def create_order(payload: OrderCreate):
+    order = Order(**payload.model_dump())
+    doc = order.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.orders.insert_one(doc)
+    return order
+
+@api_router.patch("/orders/{order_id}/confirm")
+async def confirm_order(order_id: str, body: dict):
+    upi_ref = body.get("upi_ref", "")
+    result = await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"status": "payment_confirmed", "upi_ref": upi_ref}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"id": order_id, "status": "payment_confirmed", "upi_ref": upi_ref}
+
+
+# ── Payment provider info ──────────────────────────────────────────────────────
+
+UPI_CONFIG = {
+    "upi_id": "biliion@indianbnk",
+    "merchant_name": "MS BILIION SALES AND SERVICES",
+    "currency": "INR",
 }
 
-
-@api_router.get("/payments/providers")
-async def payment_providers():
-    """Returns which payment providers have keys configured (no secrets)."""
-    return PAYMENT_PROVIDERS
+@api_router.get("/payments/upi-config")
+async def upi_config():
+    return UPI_CONFIG
 
 
-# Register router and middleware
+# ── DB seed helper ────────────────────────────────────────────────────────────
+
+@api_router.post("/admin/seed-db")
+async def seed_db():
+    """Insert seed products into MongoDB if collection is empty."""
+    count = await db.products.count_documents({})
+    if count > 0:
+        return {"message": f"Already seeded ({count} products). Skipped."}
+    docs = [{**p} for p in PRODUCTS_SEED]
+    await db.products.insert_many(docs)
+    cat_count = await db.categories.count_documents({})
+    if cat_count == 0:
+        await db.categories.insert_many([{**c} for c in CATEGORIES_SEED])
+    return {"message": f"Seeded {len(docs)} products and {len(CATEGORIES_SEED)} categories."}
+
+
+# ── App setup ──────────────────────────────────────────────────────────────────
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -278,8 +360,6 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

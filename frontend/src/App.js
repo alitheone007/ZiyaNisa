@@ -9,6 +9,7 @@ import ProductDetail from "@/pages/ProductDetail";
 import Cart from "@/pages/Cart";
 import Wishlist from "@/pages/Wishlist";
 import Login from "@/pages/Login";
+import Checkout from "@/pages/Checkout";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
               <Route path="/cart" element={<Cart />} />
               <Route path="/wishlist" element={<Wishlist />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/checkout" element={<Checkout />} />
             </Routes>
           </BrowserRouter>
           <Toaster richColors position="top-center" />
