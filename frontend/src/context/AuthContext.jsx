@@ -26,6 +26,12 @@ export function AuthProvider({ children }) {
     api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
   }
 
+  function updateUser(updates) {
+    const next = { ...user, ...updates };
+    localStorage.setItem(USER_KEY, JSON.stringify(next));
+    setUser(next);
+  }
+
   function logout() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
@@ -35,7 +41,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, setAuth, logout, isLoggedIn: !!user }}>
+    <AuthContext.Provider value={{ user, token, setAuth, updateUser, logout, isLoggedIn: !!user }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,11 +7,11 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from jose import jwt, JWTError
-from passlib.context import CryptContext
 import os
+import random
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -30,8 +30,11 @@ api_router = APIRouter(prefix="/api")
 # ── Auth config ───────────────────────────────────────────────────────────────
 JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+JWT_EXPIRY_DAYS = 30
+DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
+
+# In-memory OTP store: { contact → { otp, expires } }
+OTP_STORE: dict = {}
 
 def create_token(payload: dict) -> str:
     data = {**payload, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)}
@@ -47,6 +50,12 @@ def token_from_header(authorization: Optional[str]) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
     return decode_token(authorization.split(" ", 1)[1])
+
+def is_email(s: str) -> bool:
+    return "@" in s
+
+def normalize_phone(s: str) -> str:
+    return "".join(c for c in s if c.isdigit())
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -107,26 +116,31 @@ class Order(BaseModel):
     upi_ref: Optional[str] = None
     status: str = "pending_payment"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_id: Optional[str] = None
+    shipping_address: Optional[dict] = None
+    billing_address: Optional[dict] = None
 
 class OrderCreate(BaseModel):
     items: list
     total: int
-    upi_ref: Optional[str] = None
-    user_id: Optional[str] = None
+    shipping_address: Optional[dict] = None
+    billing_address: Optional[dict] = None
 
 class UserOut(BaseModel):
     id: str
-    name: str
-    email: str
+    name: Optional[str] = None
+    contact: str
 
-class SignupInput(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
+class SendOtpInput(BaseModel):
+    contact: str
 
-class LoginInput(BaseModel):
-    email: EmailStr
-    password: str
+class VerifyOtpInput(BaseModel):
+    contact: str
+    otp: str
+
+class UpdateProfileInput(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
 
 class TokenOut(BaseModel):
     access_token: str
@@ -327,37 +341,68 @@ async def get_services():
     return SERVICES_SEED
 
 
-# ── Auth endpoints ────────────────────────────────────────────────────────────
+# ── Auth endpoints (OTP-based, passwordless) ──────────────────────────────────
 
-@api_router.post("/auth/signup", response_model=TokenOut)
-async def signup(payload: SignupInput):
-    existing = await db.users.find_one({"email": payload.email}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
-    uid = str(uuid.uuid4())
-    doc = {
-        "id": uid,
-        "name": payload.name,
-        "email": payload.email,
-        "hashed_password": pwd_context.hash(payload.password),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.users.insert_one(doc)
-    token = create_token({"sub": uid, "email": payload.email, "name": payload.name})
-    return {"access_token": token, "user": {"id": uid, "name": payload.name, "email": payload.email}}
+@api_router.post("/auth/send-otp")
+async def send_otp(payload: SendOtpInput):
+    contact = payload.contact.strip()
+    if not contact:
+        raise HTTPException(status_code=400, detail="Contact (email or phone) is required")
+    otp = str(random.randint(100000, 999999))
+    OTP_STORE[contact] = {"otp": otp, "expires": datetime.now(timezone.utc) + timedelta(minutes=10)}
+    # Production: send otp via email/SMS here. Dev: return in response.
+    resp = {"message": "OTP sent successfully", "expires_in": 600}
+    if DEV_MODE:
+        resp["dev_otp"] = otp
+    return resp
 
-@api_router.post("/auth/login", response_model=TokenOut)
-async def login(payload: LoginInput):
-    user = await db.users.find_one({"email": payload.email}, {"_id": 0})
-    if not user or not pwd_context.verify(payload.password, user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_token({"sub": user["id"], "email": user["email"], "name": user["name"]})
-    return {"access_token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}
+@api_router.post("/auth/verify-otp", response_model=TokenOut)
+async def verify_otp(payload: VerifyOtpInput):
+    contact = payload.contact.strip()
+    record = OTP_STORE.get(contact)
+    if not record:
+        raise HTTPException(status_code=400, detail="OTP not found. Please request a new one.")
+    if datetime.now(timezone.utc) > record["expires"]:
+        OTP_STORE.pop(contact, None)
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
+    if record["otp"] != payload.otp.strip():
+        raise HTTPException(status_code=400, detail="Incorrect OTP. Please try again.")
+    OTP_STORE.pop(contact, None)
+
+    user_doc = await db.users.find_one({"contact": contact}, {"_id": 0})
+    if not user_doc:
+        uid = str(uuid.uuid4())
+        user_doc = {
+            "id": uid,
+            "contact": contact,
+            "email": contact if is_email(contact) else None,
+            "phone": normalize_phone(contact) if not is_email(contact) else None,
+            "name": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(user_doc)
+
+    token = create_token({"sub": user_doc["id"], "contact": contact, "name": user_doc.get("name")})
+    return {"access_token": token, "user": {"id": user_doc["id"], "name": user_doc.get("name"), "contact": contact}}
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def get_me(authorization: Optional[str] = Header(None)):
     claims = token_from_header(authorization)
-    return {"id": claims["sub"], "name": claims["name"], "email": claims["email"]}
+    return {"id": claims["sub"], "name": claims.get("name"), "contact": claims["contact"]}
+
+@api_router.patch("/auth/profile", response_model=UserOut)
+async def update_profile(payload: UpdateProfileInput, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    update = {}
+    if payload.name is not None:
+        update["name"] = payload.name
+    if payload.phone is not None:
+        update["phone"] = payload.phone
+    if update:
+        await db.users.update_one({"id": uid}, {"$set": update})
+    user_doc = await db.users.find_one({"id": uid}, {"_id": 0})
+    return {"id": uid, "name": user_doc.get("name"), "contact": user_doc["contact"]}
 
 
 # ── Lead capture ───────────────────────────────────────────────────────────────
@@ -387,6 +432,7 @@ async def create_order(payload: OrderCreate, authorization: Optional[str] = Head
     doc["created_at"] = doc["created_at"].isoformat()
     await db.orders.insert_one(doc)
     return order
+
 
 @api_router.patch("/orders/{order_id}/confirm")
 async def confirm_order(order_id: str, body: dict):

@@ -56,7 +56,9 @@ export default function Account() {
     navigate("/");
   }
 
-  const initials = user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const initials = user.name
+    ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+    : (user.contact?.replace("@", "").slice(0, 2) ?? "?").toUpperCase();
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
@@ -71,8 +73,8 @@ export default function Account() {
               <span className="font-serif text-xl text-pearl">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-serif text-xl text-espresso">{user.name}</h2>
-              <p className="text-sm text-taupe truncate">{user.email}</p>
+              <h2 className="font-serif text-xl text-espresso">{user.name || "Your Account"}</h2>
+              <p className="text-sm text-taupe truncate">{user.contact}</p>
             </div>
             <Button variant="ghost" onClick={handleLogout}
               className="rounded-full text-taupe hover:text-espresso hover:bg-rosemist/60 gap-1.5 text-sm">

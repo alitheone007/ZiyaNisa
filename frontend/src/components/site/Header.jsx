@@ -55,7 +55,9 @@ export default function Header() {
     navigate("/");
   }
 
-  const initials = user?.name?.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2) ?? "";
+  const initials = user?.name
+    ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+    : (user?.contact?.replace("@", "").slice(0, 2) ?? "?").toUpperCase();
 
   return (
     <motion.header
@@ -166,8 +168,8 @@ export default function Header() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-pearl border-gold/20 w-44">
                 <div className="px-3 py-2">
-                  <p className="text-xs font-medium text-espresso truncate">{user.name}</p>
-                  <p className="text-[11px] text-taupe truncate">{user.email}</p>
+                  <p className="text-xs font-medium text-espresso truncate">{user.name || "Your Account"}</p>
+                  <p className="text-[11px] text-taupe truncate">{user.contact}</p>
                 </div>
                 <DropdownMenuSeparator className="bg-gold/15" />
                 <DropdownMenuItem onClick={() => navigate("/account")} className="text-espresso focus:bg-rosemist gap-2">
