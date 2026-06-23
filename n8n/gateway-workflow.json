@@ -1,0 +1,300 @@
+{
+  "name": "Bilion — WhatsApp AI Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "={{ [\"GET\", \"POST\"] }}",
+        "path": "whatsapp_gateway",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "gw-webhook",
+      "name": "WhatsApp Gateway Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1800, 400],
+      "webhookId": "bilion-gateway-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "cond-mode",
+              "leftValue": "={{ $json.query['hub.mode'] }}",
+              "rightValue": "subscribe",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "cond-token",
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "bilion_gateway_2026",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gw-check-verify",
+      "name": "Meta Webhook Verify?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [-1560, 260]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "gw-verify-ok",
+      "name": "Verify Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-1336, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-msg",
+              "leftValue": "={{ $json.body.entry[0].changes[0].value.messages[0].type }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "exists" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gw-filter",
+      "name": "Has Message?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [-1560, 480]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "v-from", "name": "from", "value": "={{ $json.body.entry[0].changes[0].value.messages[0].from }}", "type": "string" },
+            { "id": "v-type", "name": "message_type", "value": "={{ $json.body.entry[0].changes[0].value.messages[0].type }}", "type": "string" },
+            { "id": "v-body", "name": "message_body", "value": "={{ $json.body.entry[0].changes[0].value.messages[0].text?.body ?? $json.body.entry[0].changes[0].value.messages[0].interactive?.button_reply?.title ?? $json.body.entry[0].changes[0].value.messages[0].interactive?.list_reply?.title ?? '' }}", "type": "string" },
+            { "id": "v-phone-id", "name": "phone_number_id", "value": "={{ $json.body.entry[0].changes[0].value.metadata.phone_number_id }}", "type": "string" },
+            { "id": "v-msg-id", "name": "message_id", "value": "={{ $json.body.entry[0].changes[0].value.messages[0].id }}", "type": "string" },
+            { "id": "v-name", "name": "customer_name", "value": "={{ $json.body.entry[0].changes[0].value.contacts[0].profile.name ?? 'there' }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gw-parse",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-1336, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v24.0/{{ $json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"messaging_product\": \"whatsapp\", \"status\": \"read\", \"message_id\": \"{{ $json.message_id }}\" }",
+        "options": {}
+      },
+      "id": "gw-mark-read",
+      "name": "Mark as Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-1112, 480],
+      "credentials": { "httpHeaderAuth": { "id": "atbyjLJl0owsnm0w", "name": "Header Auth account" } },
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BILION_ROUTER_URL }}/route",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone\": \"{{ $('Parse Message').item.json.from }}\",\n  \"message\": \"{{ $('Parse Message').item.json.message_body }}\",\n  \"message_type\": \"{{ $('Parse Message').item.json.message_type }}\",\n  \"customer_name\": \"{{ $('Parse Message').item.json.customer_name }}\",\n  \"phone_number_id\": \"{{ $('Parse Message').item.json.phone_number_id }}\"\n}",
+        "options": {}
+      },
+      "id": "gw-call-router",
+      "name": "Call AI Router",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-888, 480]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "r-ai",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "ai",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "AI Reply"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "r-admin",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "admin",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "AI Reply"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "r-passthrough",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "passthrough",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Passthrough"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "gw-mode-switch",
+      "name": "Route Mode",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [-664, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v24.0/{{ $('Parse Message').item.json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"recipient_type\": \"individual\",\n  \"to\": \"{{ $('Parse Message').item.json.from }}\",\n  \"type\": \"text\",\n  \"text\": { \"preview_url\": true, \"body\": \"{{ $('Call AI Router').item.json.response }}\" }\n}",
+        "options": {}
+      },
+      "id": "gw-send-ai-reply",
+      "name": "Send AI Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-440, 320],
+      "credentials": { "httpHeaderAuth": { "id": "atbyjLJl0owsnm0w", "name": "Header Auth account" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Call AI Router').item.json.passthrough_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('WhatsApp Gateway Webhook').item.json.body) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "gw-passthrough",
+      "name": "Forward to Brand Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-440, 640],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": { "responseCode": 200 }
+      },
+      "id": "gw-respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-216, 480]
+    }
+  ],
+  "connections": {
+    "WhatsApp Gateway Webhook": {
+      "main": [
+        [{ "node": "Meta Webhook Verify?", "type": "main", "index": 0 }],
+        [{ "node": "Has Message?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Meta Webhook Verify?": {
+      "main": [
+        [{ "node": "Verify Webhook", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Message?": {
+      "main": [
+        [{ "node": "Parse Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          { "node": "Mark as Read", "type": "main", "index": 0 },
+          { "node": "Call AI Router", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Call AI Router": {
+      "main": [
+        [{ "node": "Route Mode", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Mode": {
+      "main": [
+        [{ "node": "Send AI Reply", "type": "main", "index": 0 }],
+        [{ "node": "Forward to Brand Workflow", "type": "main", "index": 0 }],
+        [{ "node": "Respond OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send AI Reply": {
+      "main": [
+        [{ "node": "Respond OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Forward to Brand Workflow": {
+      "main": [
+        [{ "node": "Respond OK", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "bilion-gateway-v1",
+  "id": "bilion-whatsapp-gateway",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Single WhatsApp number gateway for all Bilion brands. Routes to AI Router (http://router:8001/route) which classifies brand via keyword+AI, fetches context, generates branded reply. Passthrough mode forwards raw payload to brand-specific n8n workflows (e.g., existing spice catalogue workflow)."
+  }
+}

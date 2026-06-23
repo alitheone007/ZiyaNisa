@@ -42,6 +42,27 @@ services:
     networks:
       - app
 
+  # ── Bilion AI Router ─────────────────────────────────────────────────────────
+  # Multi-brand WhatsApp routing service. Called by n8n gateway workflow.
+  # API docs: http://localhost:8001/docs
+  router:
+    build: ./router
+    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/router:latest
+    container_name: bilion-router
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - MONGO_URL=mongodb://mongodb:27017
+      - ROUTER_DB_NAME=bilion_router
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ADMIN_PHONE=${ADMIN_PHONE:-}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-24}
+    depends_on:
+      - mongodb
+    networks:
+      - app
+    # Internal only — not exposed externally (nginx proxies /router/ if needed)
+
   # ── n8n workflow engine ───────────────────────────────────────────────────────
   # Already running on server? Skip this block.
   # To start: docker compose --profile n8n up -d n8n
@@ -68,6 +89,7 @@ services:
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - ZIYANISA_API_URL=http://backend:8000/api
+      - BILION_ROUTER_URL=http://router:8001
       - CLAWBOT_URL=${CLAWBOT_URL:-}
     volumes:
       - n8n_data:/home/node/.n8n
