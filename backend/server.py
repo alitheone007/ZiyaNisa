@@ -516,6 +516,54 @@ async def seed_db():
 
 # ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────
 
+class Booking(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_id: str
+    service_name: str
+    service_price: int
+    service_duration: str
+    date: str            # ISO date e.g. "2026-06-25"
+    time_slot: str       # e.g. "10:00 AM - 11:00 AM"
+    address: dict        # full_name, phone, line1, city, state, pin
+    notes: Optional[str] = None
+    status: str = "confirmed"
+    upi_ref: Optional[str] = None
+    user_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookingCreate(BaseModel):
+    service_id: str
+    service_name: str
+    service_price: int
+    service_duration: str
+    date: str
+    time_slot: str
+    address: dict
+    notes: Optional[str] = None
+
+@api_router.post("/bookings", response_model=Booking)
+async def create_booking(payload: BookingCreate, authorization: Optional[str] = Header(None)):
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            claims = decode_token(authorization.split(" ", 1)[1])
+            user_id = claims.get("sub")
+        except Exception:
+            pass
+    booking = Booking(**payload.model_dump(), user_id=user_id)
+    await db.bookings.insert_one(booking.model_dump())
+    doc = await db.bookings.find_one({"id": booking.id}, {"_id": 0})
+    return doc
+
+@api_router.get("/bookings/mine")
+async def my_bookings(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    user_id = claims["sub"]
+    docs = await db.bookings.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return docs
+
+
 class ChatQueryInput(BaseModel):
     message: str
     phone: str
@@ -618,6 +666,9 @@ async def create_indexes():
     await db.chat_sessions.create_index([("phone", 1)], unique=True)
     # Auto-expire idle chat sessions after 7 days
     await db.chat_sessions.create_index([("last_active", 1)], expireAfterSeconds=604800)
+    await db.bookings.create_index([("user_id", 1)])
+    await db.bookings.create_index([("created_at", -1)])
+    await db.bookings.create_index([("date", 1)])
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

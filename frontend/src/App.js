@@ -13,6 +13,7 @@ import Login       from "@/pages/Login";
 import Checkout    from "@/pages/Checkout";
 import Account     from "@/pages/Account";
 import Services    from "@/pages/Services";
+import Book        from "@/pages/Book";
 import WhatsAppFloat from "@/components/site/WhatsAppFloat";
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
                 <Route path="/checkout"       element={<Checkout />} />
                 <Route path="/account"        element={<Account />} />
                 <Route path="/services"       element={<Services />} />
+                <Route path="/book/:serviceId" element={<Book />} />
               </Routes>
             </BrowserRouter>
             <Toaster richColors position="top-center" />

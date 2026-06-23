@@ -8,7 +8,6 @@ import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import api from "@/lib/api";
 import { SERVICES } from "@/data/seed";
-import { toast } from "sonner";
 
 const TAG_COLORS = {
   "K-Glow":      "bg-aqua/20 text-espresso",
@@ -142,9 +141,7 @@ function ServiceCard({ s, delay }) {
         <div className="mt-auto flex items-center justify-between">
           <span className="font-semibold text-espresso">₹{s.price.toLocaleString("en-IN")}</span>
           <Button
-            onClick={() => {
-              toast("Booking flow coming soon!", { description: "We'll notify you when it's live." });
-            }}
+            onClick={() => navigate(`/book/${s.id}`)}
             className="h-8 px-4 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-xs gap-1"
           >
             Book Now <ChevronRight className="w-3.5 h-3.5" />
