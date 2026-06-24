@@ -33,6 +33,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
+ADMIN_PHONE = os.environ.get("ADMIN_PHONE", "")  # e.g. "918341372666"
 
 # In-memory OTP store: { contact → { otp, expires } }
 OTP_STORE: dict = {}
@@ -57,6 +58,14 @@ def is_email(s: str) -> bool:
 
 def normalize_phone(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
+
+def is_admin_contact(contact: str) -> bool:
+    if not ADMIN_PHONE:
+        return False
+    return normalize_phone(contact)[-10:] == normalize_phone(ADMIN_PHONE)[-10:]
+
+def is_admin_claims(claims: dict) -> bool:
+    return is_admin_contact(claims.get("contact", ""))
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -137,6 +146,7 @@ class UserOut(BaseModel):
     id: str
     name: Optional[str] = None
     contact: str
+    is_admin: bool = False
 
 class SendOtpInput(BaseModel):
     contact: str
@@ -412,12 +422,12 @@ async def verify_otp(payload: VerifyOtpInput):
         await db.users.insert_one(user_doc)
 
     token = create_token({"sub": user_doc["id"], "contact": contact, "name": user_doc.get("name")})
-    return {"access_token": token, "user": {"id": user_doc["id"], "name": user_doc.get("name"), "contact": contact}}
+    return {"access_token": token, "user": {"id": user_doc["id"], "name": user_doc.get("name"), "contact": contact, "is_admin": is_admin_contact(contact)}}
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def get_me(authorization: Optional[str] = Header(None)):
     claims = token_from_header(authorization)
-    return {"id": claims["sub"], "name": claims.get("name"), "contact": claims["contact"]}
+    return {"id": claims["sub"], "name": claims.get("name"), "contact": claims["contact"], "is_admin": is_admin_claims(claims)}
 
 @api_router.patch("/auth/profile", response_model=UserOut)
 async def update_profile(payload: UpdateProfileInput, authorization: Optional[str] = Header(None)):
@@ -431,7 +441,7 @@ async def update_profile(payload: UpdateProfileInput, authorization: Optional[st
     if update:
         await db.users.update_one({"id": uid}, {"$set": update})
     user_doc = await db.users.find_one({"id": uid}, {"_id": 0})
-    return {"id": uid, "name": user_doc.get("name"), "contact": user_doc["contact"]}
+    return {"id": uid, "name": user_doc.get("name"), "contact": user_doc["contact"], "is_admin": is_admin_claims(claims)}
 
 
 # ── Lead capture ───────────────────────────────────────────────────────────────
@@ -512,6 +522,74 @@ async def seed_db():
     if seeded:
         return {"message": f"Seeded: {', '.join(seeded)}."}
     return {"message": "Already seeded. Skipped."}
+
+
+# ── Admin endpoints ───────────────────────────────────────────────────────────
+
+ORDER_STATUSES   = {"pending_payment", "payment_confirmed", "dispatched", "delivered", "cancelled"}
+BOOKING_STATUSES = {"confirmed", "in_progress", "completed", "cancelled"}
+
+@api_router.get("/admin/orders")
+async def admin_all_orders(
+    authorization: Optional[str] = Header(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    skip = (page - 1) * limit
+    total = await db.orders.count_documents({})
+    rows = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"items": rows, "total": total, "page": page, "total_pages": math.ceil(total / limit) or 1}
+
+@api_router.patch("/admin/orders/{order_id}/status")
+async def admin_update_order_status(
+    order_id: str,
+    body: dict,
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    status = body.get("status", "")
+    if status not in ORDER_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Choose from: {sorted(ORDER_STATUSES)}")
+    result = await db.orders.update_one({"id": order_id}, {"$set": {"status": status}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"id": order_id, "status": status}
+
+@api_router.get("/admin/bookings")
+async def admin_all_bookings(
+    authorization: Optional[str] = Header(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    skip = (page - 1) * limit
+    total = await db.bookings.count_documents({})
+    rows = await db.bookings.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"items": rows, "total": total, "page": page, "total_pages": math.ceil(total / limit) or 1}
+
+@api_router.patch("/admin/bookings/{booking_id}/status")
+async def admin_update_booking_status(
+    booking_id: str,
+    body: dict,
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    status = body.get("status", "")
+    if status not in BOOKING_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Choose from: {sorted(BOOKING_STATUSES)}")
+    result = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"id": booking_id, "status": status}
 
 
 # ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────

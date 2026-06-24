@@ -73,9 +73,19 @@ export default function ProductDetail() {
     setTimeout(() => setAdded(false), 2000);
   };
 
-  const related = PRODUCTS.filter(
-    (p) => p.id !== product.id && p.category_id === product.category_id
-  ).slice(0, 4);
+  const { data: relatedPage } = useQuery({
+    queryKey: ["related", product.category_id],
+    queryFn: () =>
+      product.category_id
+        ? api.get(`/products?category=${product.category_id}&limit=5`).then(r => r.data)
+        : Promise.resolve({ items: [] }),
+    enabled: !!product.category_id,
+    placeholderData: {
+      items: PRODUCTS.filter(p => p.category_id === product.category_id).slice(0, 5),
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const related = (relatedPage?.items || []).filter(p => p.id !== product.id).slice(0, 4);
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">

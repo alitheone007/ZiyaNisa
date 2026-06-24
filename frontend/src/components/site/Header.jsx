@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, MapPin, Heart, ShoppingBag, User, Menu, LogOut, Package } from "lucide-react";
+import { Search, MapPin, Heart, ShoppingBag, User, Menu, LogOut, Package, LayoutDashboard } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,6 +178,14 @@ export default function Header() {
                 <DropdownMenuItem onClick={() => navigate("/account")} className="text-espresso focus:bg-rosemist gap-2">
                   <Package className="w-4 h-4" /> My Orders
                 </DropdownMenuItem>
+                {user?.is_admin && (
+                  <>
+                    <DropdownMenuSeparator className="bg-gold/15" />
+                    <DropdownMenuItem onClick={() => navigate("/admin")} className="text-espresso focus:bg-rosemist gap-2">
+                      <LayoutDashboard className="w-4 h-4" /> Admin Dashboard
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator className="bg-gold/15" />
                 <DropdownMenuItem onClick={handleLogout} className="text-espresso focus:bg-rosemist gap-2">
                   <LogOut className="w-4 h-4" /> Sign Out
