@@ -93,6 +93,7 @@ class Product(BaseModel):
     rating: float
     reviews: int
     img: str
+    images: List[str] = []      # additional gallery images
     badges: List[str] = []
     actives: List[str] = []
     category_id: Optional[str] = None
@@ -351,10 +352,18 @@ async def get_categories():
     cats = await db.categories.find({}, {"_id": 0}).to_list(50)
     return cats if cats else CATEGORIES_SEED
 
+SORT_MAP = {
+    "rating":     [("rating", -1)],
+    "reviews":    [("reviews", -1)],
+    "price_asc":  [("price",  1)],
+    "price_desc": [("price", -1)],
+}
+
 @api_router.get("/products", response_model=ProductsPage)
 async def get_products(
     category: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),   # rating | reviews | price_asc | price_desc
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
@@ -365,7 +374,9 @@ async def get_products(
         query["$or"] = [
             {"name":  {"$regex": q, "$options": "i"}},
             {"brand": {"$regex": q, "$options": "i"}},
+            {"actives": {"$regex": q, "$options": "i"}},
         ]
+    mongo_sort = SORT_MAP.get(sort)
     total = await db.products.count_documents(query)
     if total == 0:
         # fallback: serve in-memory seed so the shop is never empty
@@ -373,13 +384,21 @@ async def get_products(
         if category: seed = [p for p in seed if p.get("category_id") == category]
         if q:
             ql = q.lower()
-            seed = [p for p in seed if ql in p["name"].lower() or ql in p["brand"].lower()]
+            seed = [p for p in seed if ql in p["name"].lower() or ql in p["brand"].lower() or
+                    any(ql in a.lower() for a in p.get("actives", []))]
+        if sort == "rating":     seed = sorted(seed, key=lambda p: p.get("rating", 0), reverse=True)
+        elif sort == "reviews":  seed = sorted(seed, key=lambda p: p.get("reviews", 0), reverse=True)
+        elif sort == "price_asc":  seed = sorted(seed, key=lambda p: p.get("price", 0))
+        elif sort == "price_desc": seed = sorted(seed, key=lambda p: p.get("price", 0), reverse=True)
         total = len(seed)
         skip = (page - 1) * limit
         items = seed[skip: skip + limit]
         return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
     skip = (page - 1) * limit
-    items = await db.products.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    cursor = db.products.find(query, {"_id": 0}).skip(skip).limit(limit)
+    if mongo_sort:
+        cursor = cursor.sort(mongo_sort)
+    items = await cursor.to_list(limit)
     return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
 
 @api_router.get("/products/{product_id}", response_model=Product)

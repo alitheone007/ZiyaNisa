@@ -41,11 +41,10 @@ export default function Header() {
   }, []);
 
   function handleSearch(e) {
-    if (e.key === "Enter" && searchVal.trim()) {
-      navigate(`/shop?q=${encodeURIComponent(searchVal.trim())}`);
+    if (e.key === "Enter") {
+      const term = searchVal.trim();
+      navigate(term ? `/search?q=${encodeURIComponent(term)}` : "/search");
       setSearchVal("");
-    } else if (e.key === "Enter") {
-      navigate("/shop");
     }
   }
 

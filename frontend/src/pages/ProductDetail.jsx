@@ -175,8 +175,9 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggle, isWishlisted } = useWishlist();
-  const [qty, setQty] = useState(1);
-  const [added, setAdded] = useState(false);
+  const [qty, setQty]           = useState(1);
+  const [added, setAdded]       = useState(false);
+  const [activeImg, setActiveImg] = useState(0);
 
   const { data: product, isLoading, isError } = useQuery({
     queryKey: ["product", slug],
@@ -270,26 +271,46 @@ export default function ProductDetail() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-10 md:gap-16">
-            {/* Image */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              className="relative"
-            >
-              <div className="aspect-square rounded-3xl overflow-hidden bg-rosemist/30 border border-gold/15">
-                <img
-                  src={product.img}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {discount > 0 && (
-                <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-errorRose/95 text-pearl text-sm font-semibold">
-                  -{discount}% OFF
-                </span>
-              )}
-            </motion.div>
+            {/* Image gallery */}
+            {(() => {
+              const allImgs = [product.img, ...(product.images || [])].filter(Boolean);
+              const current = allImgs[activeImg] || allImgs[0];
+              return (
+                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6 }} className="relative flex flex-col gap-3">
+
+                  {/* Main image */}
+                  <div className="relative aspect-square rounded-3xl overflow-hidden bg-rosemist/30 border border-gold/15 group">
+                    <AnimatePresence mode="wait">
+                      <motion.img key={current} src={current} alt={product.name}
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                    </AnimatePresence>
+                    {discount > 0 && (
+                      <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-errorRose/95 text-pearl text-sm font-semibold">
+                        -{discount}% OFF
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Thumbnails — only if multiple images */}
+                  {allImgs.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {allImgs.map((img, i) => (
+                        <button key={i} onClick={() => setActiveImg(i)}
+                          className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${
+                            i === activeImg ? "border-espresso shadow-goldGlow" : "border-gold/20 hover:border-gold/60"
+                          }`}>
+                          <img src={img} alt={`view ${i + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })()}
 
             {/* Info */}
             <motion.div

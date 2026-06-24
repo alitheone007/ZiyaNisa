@@ -1,9 +1,37 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { CATEGORIES } from "@/data/seed";
+import api from "@/lib/api";
+
+// Local tint map — categories don't change often, colours are brand decisions
+const TINT = {
+  skincare:   "from-aqua/20 to-ivory",
+  haircare:   "from-peach/30 to-ivory",
+  makeup:     "from-rosemist to-ivory",
+  "bath-body":"from-champagne/40 to-ivory",
+  fragrance:  "from-gold/20 to-ivory",
+  jewellery:  "from-champagne/50 to-ivory",
+  handbags:   "from-rosemist to-ivory",
+  tools:      "from-aqua/20 to-ivory",
+  mens:       "from-taupe/15 to-ivory",
+  bridal:     "from-gold/25 to-ivory",
+};
 
 export default function CategoryGrid() {
+  const { data } = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => api.get("/categories").then(r => r.data),
+    placeholderData: CATEGORIES,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const categories = (Array.isArray(data) ? data : CATEGORIES).map(c => ({
+    ...c,
+    tint: TINT[c.id] || "from-rosemist to-ivory",
+  }));
+
   return (
     <section id="categories" data-testid="categories" className="py-20 md:py-28">
       <div className="max-w-7xl mx-auto px-5 md:px-10">
@@ -14,7 +42,7 @@ export default function CategoryGrid() {
         />
 
         <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 md:gap-5">
-          {CATEGORIES.map((c, i) => (
+          {categories.map((c, i) => (
             <motion.div
               key={c.id}
               data-testid={`cat-${c.id}`}

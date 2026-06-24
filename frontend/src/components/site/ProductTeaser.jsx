@@ -1,23 +1,34 @@
 import { motion } from "framer-motion";
 import { Star, ShoppingBag, Eye, Heart, ArrowRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PRODUCTS } from "@/data/seed";
 import { SectionHead } from "./CategoryGrid";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { toast } from "sonner";
+import api from "@/lib/api";
 
 export default function ProductTeaser() {
   const navigate = useNavigate();
+
+  const { data } = useQuery({
+    queryKey: ["products-featured"],
+    queryFn: () => api.get("/products?sort=reviews&limit=8").then(r => r.data),
+    placeholderData: { items: PRODUCTS.slice().sort((a, b) => b.reviews - a.reviews).slice(0, 8) },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const products = data?.items || [];
 
   return (
     <section data-testid="products-teaser" id="products" className="py-20 md:py-28 bg-gradient-to-b from-ivory via-rosemist/30 to-ivory">
       <div className="max-w-7xl mx-auto px-5 md:px-10">
         <SectionHead
-          overline="K-Glow Picks"
-          title={<>Clean actives, <span className="italic font-light">graceful results</span></>}
-          subtitle="Eight editorial favourites from our verified brand partners — original formulations, derm-backed."
+          overline="Most Loved"
+          title={<>Our <span className="italic font-light">bestsellers</span></>}
+          subtitle="The products our customers reach for again and again — highest rated, most reviewed."
           action={
             <Button
               data-testid="see-all-products"
@@ -32,7 +43,7 @@ export default function ProductTeaser() {
         />
 
         <div className="mt-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-          {PRODUCTS.map((p, i) => (
+          {products.map((p, i) => (
             <ProductCard key={p.id} p={p} delay={(i % 4) * 0.07} />
           ))}
         </div>
@@ -41,7 +52,7 @@ export default function ProductTeaser() {
   );
 }
 
-function ProductCard({ p, delay }) {
+export function ProductCard({ p, delay = 0 }) {
   const { addToCart } = useCart();
   const { toggle, isWishlisted } = useWishlist();
   const discount = Math.round(((p.mrp - p.price) / p.mrp) * 100);
@@ -67,9 +78,9 @@ function ProductCard({ p, delay }) {
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)]"
           />
 
-          {/* Top badges */}
+          {/* Badges */}
           <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5">
-            {p.badges.slice(0, 1).map((b) => (
+            {p.badges?.slice(0, 1).map((b) => (
               <span key={b} className="text-[10px] uppercase tracking-[0.16em] px-2 py-1 rounded-full bg-pearl/90 text-espresso border border-gold/30">
                 {b}
               </span>
@@ -81,47 +92,31 @@ function ProductCard({ p, delay }) {
             </span>
           )}
 
-          {/* Quick actions overlay */}
+          {/* Quick actions */}
           <div className="absolute inset-x-2.5 bottom-2.5 flex items-center gap-1.5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
             <Button
               data-testid={`add-${p.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                addToCart(p);
-                toast.success(`${p.name} added to cart`);
-              }}
+              onClick={(e) => { e.preventDefault(); addToCart(p); toast.success(`${p.name} added to cart`); }}
               className="flex-1 h-9 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-xs"
             >
               <ShoppingBag className="w-3.5 h-3.5 mr-1" /> Add
             </Button>
-            <Button
-              data-testid={`quick-${p.id}`}
-              size="icon"
-              variant="outline"
-              className="h-9 w-9 rounded-full border-gold/40 bg-pearl/95"
-              asChild
-            >
-              <Link to={`/product/${p.id}`}>
-                <Eye className="w-3.5 h-3.5 text-espresso" />
-              </Link>
+            <Button size="icon" variant="outline" className="h-9 w-9 rounded-full border-gold/40 bg-pearl/95" asChild>
+              <Link to={`/product/${p.id}`}><Eye className="w-3.5 h-3.5 text-espresso" /></Link>
             </Button>
             <Button
               data-testid={`save-${p.id}`}
-              size="icon"
-              variant="outline"
-              onClick={(e) => {
-                e.preventDefault();
-                toggle(p);
-              }}
+              size="icon" variant="outline"
+              onClick={(e) => { e.preventDefault(); toggle(p); }}
               className={`h-9 w-9 rounded-full border-gold/40 ${wishlisted ? "bg-rosemist" : "bg-pearl/95"}`}
             >
               <Heart className={`w-3.5 h-3.5 text-espresso ${wishlisted ? "fill-espresso" : ""}`} />
             </Button>
           </div>
 
-          {/* Floating actives capsules */}
+          {/* Actives */}
           <div className="absolute left-2.5 bottom-14 flex flex-col gap-1 opacity-0 -translate-x-3 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-500">
-            {p.actives.slice(0, 2).map((a) => (
+            {p.actives?.slice(0, 2).map((a) => (
               <span key={a} className="text-[10px] px-2 py-0.5 rounded-full bg-aqua/15 text-espresso border border-aqua/40 backdrop-blur">
                 {a}
               </span>
@@ -137,7 +132,7 @@ function ProductCard({ p, delay }) {
         <div className="mt-2 flex items-center gap-1 text-xs">
           <Star className="w-3.5 h-3.5 fill-gold text-gold" />
           <span className="text-espresso font-medium">{p.rating}</span>
-          <span className="text-taupe">({p.reviews})</span>
+          <span className="text-taupe">({p.reviews?.toLocaleString("en-IN")})</span>
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className="text-espresso font-semibold">₹{p.price.toLocaleString("en-IN")}</span>
@@ -145,7 +140,6 @@ function ProductCard({ p, delay }) {
         </div>
       </Link>
 
-      {/* Shimmer border on hover */}
       <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500">
         <div className="absolute inset-0 rounded-2xl border border-gold/40" />
       </div>
