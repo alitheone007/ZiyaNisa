@@ -164,6 +164,15 @@ export default function OrderDetail() {
                   UPI Reference: <span className="font-mono text-espresso">{order.upi_ref}</span>
                 </p>
               )}
+              {order.tracking_url && (
+                <div className="mt-4 pt-3 border-t border-gold/10">
+                  <a href={order.tracking_url} target="_blank" rel="noopener noreferrer">
+                    <Button className="rounded-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 h-9 text-sm px-5">
+                      <Truck className="w-4 h-4" /> Track Your Order
+                    </Button>
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Items */}
@@ -242,6 +251,13 @@ export default function OrderDetail() {
                 className="rounded-full bg-espresso text-ivory gap-2">
                 Continue Shopping
               </Button>
+              {order.tracking_url && (
+                <Button asChild className="rounded-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                  <a href={order.tracking_url} target="_blank" rel="noopener noreferrer">
+                    <Truck className="w-4 h-4" /> Track Order
+                  </a>
+                </Button>
+              )}
             </div>
 
           </motion.div>

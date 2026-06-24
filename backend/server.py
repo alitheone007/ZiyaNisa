@@ -2,7 +2,7 @@
 ZiyaNisa — FastAPI backend.
 """
 
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, File, UploadFile, Form
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -15,7 +15,17 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 import uuid
 import math
+import io
+import base64
+import json as _json
+import httpx
 from datetime import datetime, timezone, timedelta
+
+try:
+    from PIL import Image, ExifTags
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
 
 
 ROOT_DIR = Path(__file__).parent
@@ -33,7 +43,9 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
-ADMIN_PHONE = os.environ.get("ADMIN_PHONE", "")  # e.g. "918341372666"
+ADMIN_PHONE   = os.environ.get("ADMIN_PHONE", "")  # e.g. "918341372666"
+OLLAMA_HOST   = os.environ.get("OLLAMA_HOST",  "http://localhost:11434")
+VISION_MODEL  = os.environ.get("VISION_MODEL", "moondream")
 
 # In-memory OTP store: { contact → { otp, expires } }
 OTP_STORE: dict = {}
@@ -97,6 +109,7 @@ class Product(BaseModel):
     badges: List[str] = []
     actives: List[str] = []
     category_id: Optional[str] = None
+    in_stock: bool = True
 
 class Service(BaseModel):
     id: str
@@ -138,6 +151,7 @@ class Order(BaseModel):
     billing_address: Optional[dict] = None
     coupon_code: Optional[str] = None
     discount: int = 0
+    tracking_url: Optional[str] = None
 
 class OrderCreate(BaseModel):
     items: list
@@ -207,6 +221,37 @@ class SkinProfileCreate(BaseModel):
 class SkinProfileOut(SkinProfileCreate):
     id: str
     updated_at: str
+
+class ProductCreate(BaseModel):
+    name: str
+    brand: str
+    price: int
+    mrp: int
+    rating: float = 4.5
+    reviews: int = 0
+    img: str
+    images: List[str] = []
+    badges: List[str] = []
+    actives: List[str] = []
+    category_id: Optional[str] = None
+    in_stock: bool = True
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    price: Optional[int] = None
+    mrp: Optional[int] = None
+    rating: Optional[float] = None
+    reviews: Optional[int] = None
+    img: Optional[str] = None
+    images: Optional[List[str]] = None
+    badges: Optional[List[str]] = None
+    actives: Optional[List[str]] = None
+    category_id: Optional[str] = None
+    in_stock: Optional[bool] = None
+
+class WaitlistCreate(BaseModel):
+    contact: str
 
 class SendOtpInput(BaseModel):
     contact: str
@@ -616,13 +661,34 @@ async def create_order(payload: OrderCreate, authorization: Optional[str] = Head
 
 @api_router.patch("/orders/{order_id}/confirm")
 async def confirm_order(order_id: str, body: dict):
-    upi_ref = body.get("upi_ref", "")
+    upi_ref = body.get("upi_ref", "").strip().upper()
+    if not upi_ref:
+        raise HTTPException(status_code=400, detail="Transaction ID is required")
+
+    # Guard against reuse — double-check even if /payments/verify was called
+    if await db.transactions.find_one({"transaction_id": upi_ref}):
+        raise HTTPException(
+            status_code=409,
+            detail="This Transaction ID has already been used for another order",
+        )
+
     result = await db.orders.update_one(
         {"id": order_id},
-        {"$set": {"status": "payment_confirmed", "upi_ref": upi_ref}}
+        {"$set": {"status": "payment_confirmed", "upi_ref": upi_ref}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Lock transaction ID — idempotent upsert
+    await db.transactions.update_one(
+        {"transaction_id": upi_ref},
+        {"$set": {
+            "transaction_id": upi_ref,
+            "order_id": order_id,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
     return {"id": order_id, "status": "payment_confirmed", "upi_ref": upi_ref}
 
 @api_router.get("/orders/mine")
@@ -630,6 +696,172 @@ async def my_orders(authorization: Optional[str] = Header(None)):
     claims = token_from_header(authorization)
     rows = await db.orders.find({"user_id": claims["sub"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return rows
+
+
+# ── Payment verification helpers ─────────────────────────────────────────────
+
+async def _check_image_metadata(image_bytes: bytes) -> dict:
+    """Detect image-editing software via EXIF — Photoshop/GIMP edits leave fingerprints."""
+    if not _PIL_OK:
+        return {"passed": True, "reason": "Pillow not installed — metadata check skipped"}
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        exif = None
+        if hasattr(img, "_getexif"):
+            try:
+                exif = img._getexif()
+            except Exception:
+                pass
+        editing_sw = []
+        if exif:
+            for tag_id, val in exif.items():
+                tag_name = ExifTags.TAGS.get(tag_id, "")
+                if tag_name in ("Software", "ProcessingSoftware"):
+                    sw = str(val).lower()
+                    if any(s in sw for s in [
+                        "photoshop", "gimp", "lightroom", "affinity",
+                        "corel", "paint.net", "pixelmator", "canva",
+                    ]):
+                        editing_sw.append(str(val))
+        return {
+            "passed": len(editing_sw) == 0,
+            "format": img.format or "unknown",
+            "dimensions": f"{img.size[0]}×{img.size[1]}",
+            "editing_software": editing_sw,
+            "reason": (
+                f"Image was edited with: {', '.join(editing_sw)}"
+                if editing_sw else "No editing software detected in metadata"
+            ),
+        }
+    except Exception as exc:
+        return {"passed": True, "reason": f"Metadata parse error (non-blocking): {exc}"}
+
+
+async def _analyze_with_vision(image_bytes: bytes, expected_amount: int) -> dict:
+    """Send screenshot to local Ollama vision model for payment authenticity check."""
+    try:
+        b64 = base64.b64encode(image_bytes).decode()
+        prompt = (
+            f"You are a payment fraud detection assistant. Carefully examine this screenshot.\n"
+            f"Expected payment amount: Rs.{expected_amount}\n\n"
+            f"Answer the following — reply ONLY with valid JSON, no markdown, no extra text:\n"
+            f'{{"is_payment_screenshot": true/false, '
+            f'"payment_status_success": true/false, '
+            f'"has_transaction_id": true/false, '
+            f'"amount_visible": true/false, '
+            f'"amount_matches": true/false, '
+            f'"looks_authentic": true/false, '
+            f'"reason": "one sentence explanation"}}\n\n'
+            f"Guidelines:\n"
+            f"- is_payment_screenshot: Is this from a UPI app (PhonePe, GPay, Paytm, BHIM, etc.)?\n"
+            f"- payment_status_success: Does it show 'Success', 'Paid', 'Completed' etc.?\n"
+            f"- has_transaction_id: Is a UTR/Transaction ID visible?\n"
+            f"- amount_matches: Does the amount shown match Rs.{expected_amount}?\n"
+            f"- looks_authentic: No obvious Photoshop text overlays, color anomalies, or inconsistent fonts?"
+        )
+        async with httpx.AsyncClient(timeout=50.0) as client:
+            resp = await client.post(
+                f"{OLLAMA_HOST}/api/generate",
+                json={"model": VISION_MODEL, "prompt": prompt, "images": [b64], "stream": False},
+            )
+        if resp.status_code != 200:
+            return {"looks_authentic": True, "skipped": True, "reason": f"Vision model HTTP {resp.status_code}"}
+        raw = resp.json().get("response", "{}").strip()
+        # Strip markdown code fences if the model added them
+        if raw.startswith("```"):
+            raw = raw.split("```")[1].lstrip("json").strip()
+        result = _json.loads(raw)
+        return result
+    except _json.JSONDecodeError:
+        return {"looks_authentic": True, "skipped": True, "reason": "Vision model returned unparseable response"}
+    except httpx.ConnectError:
+        return {"looks_authentic": True, "skipped": True, "reason": "Vision model offline — manual review will apply"}
+    except Exception as exc:
+        return {"looks_authentic": True, "skipped": True, "reason": str(exc)}
+
+
+# ── Payment verify endpoint ────────────────────────────────────────────────────
+
+@api_router.post("/payments/verify")
+async def verify_payment(
+    transaction_id: str    = Form(...),
+    amount:         int    = Form(...),
+    screenshot:     UploadFile = File(...),
+):
+    txn = transaction_id.strip().upper()
+    if not txn or len(txn) < 6:
+        raise HTTPException(status_code=400, detail="Transaction ID must be at least 6 characters")
+
+    # 1. Uniqueness check — prevent screenshot reuse across orders
+    if await db.transactions.find_one({"transaction_id": txn}):
+        raise HTTPException(
+            status_code=409,
+            detail="This Transaction ID has already been used for another order. "
+                   "If you believe this is an error, please contact support.",
+        )
+
+    # 2. File validation
+    if not (screenshot.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be an image (PNG, JPEG, or WEBP)")
+    image_bytes = await screenshot.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Screenshot file is empty")
+    if len(image_bytes) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Screenshot too large — maximum 15 MB")
+
+    # 3. EXIF / metadata edit detection
+    meta = await _check_image_metadata(image_bytes)
+    if not meta.get("passed", True):
+        return {
+            "verified": False,
+            "reason": meta.get("reason", "Screenshot appears to have been edited"),
+            "checks": {"metadata": meta, "ai": None},
+        }
+
+    # 4. AI vision analysis
+    ai = await _analyze_with_vision(image_bytes, amount)
+
+    if not ai.get("skipped"):
+        if not ai.get("is_payment_screenshot", True):
+            return {
+                "verified": False,
+                "reason": f"This does not look like a UPI payment screenshot. {ai.get('reason', '')}".strip(),
+                "checks": {"metadata": meta, "ai": ai},
+            }
+        if not ai.get("payment_status_success", True):
+            return {
+                "verified": False,
+                "reason": f"The payment does not show a Successful status. {ai.get('reason', '')}".strip(),
+                "checks": {"metadata": meta, "ai": ai},
+            }
+        if not ai.get("looks_authentic", True):
+            return {
+                "verified": False,
+                "reason": f"Screenshot appears manipulated. {ai.get('reason', '')}".strip(),
+                "checks": {"metadata": meta, "ai": ai},
+            }
+
+    # 5. Save pending verification so confirm endpoint can reference it
+    await db.payment_verifications.update_one(
+        {"transaction_id": txn},
+        {"$set": {
+            "transaction_id": txn,
+            "amount": amount,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "meta": meta,
+            "ai": {k: v for k, v in ai.items() if k != "skipped"},
+            "status": "verified",
+        }},
+        upsert=True,
+    )
+
+    ai_reason = ai.get("reason", "") if not ai.get("skipped") else ""
+    return {
+        "verified": True,
+        "reason": ai_reason or "Transaction ID is unique and screenshot passed all checks",
+        "checks": {"metadata": meta, "ai": ai},
+        "transaction_id": txn,
+    }
 
 
 # ── Payment provider info ──────────────────────────────────────────────────────
@@ -734,6 +966,152 @@ async def admin_update_booking_status(
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Booking not found")
     return {"id": booking_id, "status": status}
+
+
+# ── Admin — Product CRUD ───────────────────────────────────────────────────────
+
+@api_router.post("/admin/products")
+async def admin_create_product(payload: ProductCreate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    product_id = f"p-{str(uuid.uuid4())[:8]}"
+    doc = {"id": product_id, **payload.model_dump()}
+    await db.products.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/admin/products/{product_id}")
+async def admin_update_product(product_id: str, payload: ProductUpdate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    existing = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not existing:
+        seed_product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
+        if seed_product:
+            await db.products.insert_one({**seed_product, **update})
+        else:
+            raise HTTPException(status_code=404, detail="Product not found")
+    else:
+        await db.products.update_one({"id": product_id}, {"$set": update})
+    return await db.products.find_one({"id": product_id}, {"_id": 0})
+
+@api_router.delete("/admin/products/{product_id}")
+async def admin_delete_product(product_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    await db.products.delete_one({"id": product_id})
+    await db.deleted_products.update_one(
+        {"product_id": product_id},
+        {"$set": {"product_id": product_id, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"deleted": True, "id": product_id}
+
+@api_router.patch("/admin/products/{product_id}/stock")
+async def toggle_stock(product_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    in_stock = body.get("in_stock", True)
+    existing = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not existing:
+        seed_product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
+        if seed_product:
+            await db.products.insert_one({**seed_product, "in_stock": in_stock})
+        else:
+            raise HTTPException(status_code=404, detail="Product not found")
+    else:
+        await db.products.update_one({"id": product_id}, {"$set": {"in_stock": in_stock}})
+    return {"id": product_id, "in_stock": in_stock}
+
+
+# ── Admin — Analytics ──────────────────────────────────────────────────────────
+
+@api_router.get("/admin/analytics")
+async def admin_analytics(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    paid = ["payment_confirmed", "dispatched", "delivered"]
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    rev_agg = await db.orders.aggregate([
+        {"$match": {"status": {"$in": paid}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+    total_revenue = rev_agg[0]["total"] if rev_agg else 0
+    total_orders  = rev_agg[0]["count"] if rev_agg else 0
+
+    week_agg = await db.orders.aggregate([
+        {"$match": {"status": {"$in": paid}, "created_at": {"$gte": seven_days_ago}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}},
+    ]).to_list(1)
+    revenue_this_week = week_agg[0]["total"] if week_agg else 0
+    orders_this_week  = week_agg[0]["count"] if week_agg else 0
+
+    top_products = await db.orders.aggregate([
+        {"$match": {"status": {"$in": paid}}},
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id":      "$items.id",
+            "name":     {"$first": "$items.name"},
+            "qty_sold": {"$sum":   "$items.qty"},
+            "revenue":  {"$sum":   {"$multiply": ["$items.qty", "$items.price"]}},
+        }},
+        {"$sort": {"revenue": -1}},
+        {"$limit": 5},
+    ]).to_list(5)
+
+    recent = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+    total_customers = len(await db.orders.distinct("user_id"))
+
+    return {
+        "total_revenue":     total_revenue,
+        "total_orders":      total_orders,
+        "revenue_this_week": revenue_this_week,
+        "orders_this_week":  orders_this_week,
+        "total_customers":   total_customers,
+        "top_products":      top_products,
+        "recent_orders":     recent,
+    }
+
+
+# ── Admin — Tracking URL ───────────────────────────────────────────────────────
+
+@api_router.patch("/admin/orders/{order_id}/tracking")
+async def set_tracking(order_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    tracking_url = body.get("tracking_url", "")
+    result = await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"tracking_url": tracking_url, "status": "dispatched"}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"id": order_id, "tracking_url": tracking_url}
+
+
+# ── Notify-Me Waitlist ─────────────────────────────────────────────────────────
+
+@api_router.post("/products/{product_id}/notify")
+async def notify_when_back(product_id: str, payload: WaitlistCreate):
+    doc = {
+        "id":         str(uuid.uuid4()),
+        "product_id": product_id,
+        "contact":    payload.contact,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.waitlist.insert_one(doc)
+    return {"success": True}
 
 
 # ── Order detail ─────────────────────────────────────────────────────────────
@@ -1126,6 +1504,10 @@ async def create_indexes():
     await db.addresses.create_index([("user_id", 1)])
     await db.skin_profiles.create_index([("user_id", 1)], unique=True)
     await db.coupons.create_index([("code", 1)], unique=True)
+    await db.waitlist.create_index([("product_id", 1)])
+    await db.products.create_index([("id", 1)], unique=True, sparse=True)
+    await db.transactions.create_index([("transaction_id", 1)], unique=True)
+    await db.payment_verifications.create_index([("transaction_id", 1)], unique=True)
     # Seed coupons if missing
     if await db.coupons.count_documents({}) == 0:
         await db.coupons.insert_many([{**c} for c in COUPON_SEEDS])

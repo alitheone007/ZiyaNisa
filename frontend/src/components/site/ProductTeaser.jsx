@@ -86,20 +86,30 @@ export function ProductCard({ p, delay = 0 }) {
               </span>
             ))}
           </div>
-          {discount > 0 && (
+          {discount > 0 && p.in_stock !== false && (
             <span className="absolute top-2.5 right-2.5 text-[10px] font-semibold px-2 py-1 rounded-full bg-errorRose/95 text-pearl">
               -{discount}%
             </span>
+          )}
+
+          {/* Out of stock overlay */}
+          {p.in_stock === false && (
+            <div className="absolute inset-0 bg-stone-900/50 flex items-center justify-center">
+              <span className="text-xs font-semibold text-white px-3 py-1.5 rounded-full bg-stone-700/80 backdrop-blur uppercase tracking-wider">
+                Out of Stock
+              </span>
+            </div>
           )}
 
           {/* Quick actions */}
           <div className="absolute inset-x-2.5 bottom-2.5 flex items-center gap-1.5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
             <Button
               data-testid={`add-${p.id}`}
-              onClick={(e) => { e.preventDefault(); addToCart(p); toast.success(`${p.name} added to cart`); }}
-              className="flex-1 h-9 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-xs"
+              onClick={(e) => { e.preventDefault(); if (p.in_stock === false) return; addToCart(p); toast.success(`${p.name} added to cart`); }}
+              disabled={p.in_stock === false}
+              className={`flex-1 h-9 rounded-full text-xs ${p.in_stock === false ? "bg-stone-300 text-stone-500 cursor-not-allowed" : "bg-espresso text-ivory hover:bg-espresso/90"}`}
             >
-              <ShoppingBag className="w-3.5 h-3.5 mr-1" /> Add
+              {p.in_stock === false ? "Out of Stock" : <><ShoppingBag className="w-3.5 h-3.5 mr-1" /> Add</>}
             </Button>
             <Button size="icon" variant="outline" className="h-9 w-9 rounded-full border-gold/40 bg-pearl/95" asChild>
               <Link to={`/product/${p.id}`}><Eye className="w-3.5 h-3.5 text-espresso" /></Link>

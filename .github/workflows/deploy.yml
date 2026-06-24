@@ -3,90 +3,58 @@ name: Build & Deploy to Hetzner
 on:
   push:
     branches: [main]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  workflow_dispatch:
 
 jobs:
-  # ── 1. Build & push Docker images to GHCR ───────────────────────────────────
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
 
-      # Proxy image (nginx + React build)
-      - name: Build & push proxy image
-        uses: docker/build-push-action@v5
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          REACT_APP_API_URL: /api
+          CI: "false"
+        run: npm run build
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          context: .
-          file: Dockerfile.proxy
-          push: true
-          tags: ${{ env.IMAGE_PREFIX }}/proxy:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
 
-      # Backend image (FastAPI)
-      - name: Build & push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ env.IMAGE_PREFIX }}/backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Add server to known hosts
+        run: ssh-keyscan -H ${{ secrets.HETZNER_HOST }} >> ~/.ssh/known_hosts
 
-  # ── 2. SSH into Hetzner and redeploy ─────────────────────────────────────────
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
+      - name: Sync frontend build to server
+        run: |
+          rsync -az --delete \
+            frontend/build/ \
+            ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}:/opt/ziyanisa/frontend/build/
 
-    steps:
-      - name: Checkout (for docker-compose.yml)
-        uses: actions/checkout@v4
-
-      - name: Copy docker-compose.yml to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: ${{ secrets.HETZNER_USER }}
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          source: "docker-compose.yml"
-          target: "~/ziyanisa"
-
-      - name: Pull images & restart containers
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: ${{ secrets.HETZNER_USER }}
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: |
+      - name: Deploy backend & reload services
+        run: |
+          ssh ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }} << 'ENDSSH'
             set -e
-            cd ~/ziyanisa
-
-            # Authenticate to GHCR so we can pull private images
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
-              -u ${{ github.actor }} --password-stdin
-
-            # Export repo name so docker-compose can tag images correctly
-            export GITHUB_REPOSITORY=${{ github.repository }}
-
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker image prune -f
+            cd /opt/ziyanisa
+            git fetch origin main
+            git reset --hard origin/main
+            source /opt/ziyanisa/venv/bin/activate
+            pip install -q -r backend/requirements.txt
+            sudo systemctl restart ziyanisa-backend
+            sudo nginx -t && sudo systemctl reload nginx
+            echo "Deploy complete at $(date)"
+          ENDSSH

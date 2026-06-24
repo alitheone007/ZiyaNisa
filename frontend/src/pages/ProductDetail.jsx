@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare, GitCompareArrows } from "lucide-react";
+import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare, GitCompareArrows, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
 import Footer from "@/components/site/Footer";
@@ -14,6 +14,46 @@ import { useAuth } from "@/context/AuthContext";
 import { useCompare } from "@/context/CompareContext";
 import { PRODUCTS } from "@/data/seed";
 import { toast } from "sonner";
+
+// ── Notify Me when back in stock ─────────────────────────────────────────────
+function NotifyMeBox({ productId }) {
+  const [contact, setContact] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const { mutate: notify, isPending } = useMutation({
+    mutationFn: () => api.post(`/products/${productId}/notify`, { contact }),
+    onSuccess: () => setSent(true),
+    onError: () => toast.error("Could not save. Try again."),
+  });
+
+  if (sent) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+        <Check className="w-4 h-4" /> Got it — we'll notify you when it's back!
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-2 flex-wrap">
+      <input
+        type="text"
+        placeholder="Enter email or phone to be notified"
+        value={contact}
+        onChange={e => setContact(e.target.value)}
+        className="flex-1 h-11 rounded-full border border-gold/30 px-4 text-sm text-espresso placeholder:text-taupe/60 focus:outline-none focus:ring-2 focus:ring-gold/40 bg-pearl min-w-[180px]"
+      />
+      <Button
+        onClick={() => contact.trim() && notify()}
+        disabled={!contact.trim() || isPending}
+        className="rounded-full bg-espresso text-ivory h-11 px-6 text-sm gap-2"
+      >
+        <BellRing className="w-4 h-4" />
+        {isPending ? "Saving…" : "Notify Me"}
+      </Button>
+    </div>
+  );
+}
 
 // ── Star Rating Input ─────────────────────────────────────────────────────────
 function StarInput({ value, onChange }) {
@@ -290,10 +330,17 @@ export default function ProductDetail() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                       />
                     </AnimatePresence>
-                    {discount > 0 && (
+                    {discount > 0 && product.in_stock !== false && (
                       <span className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-errorRose/95 text-pearl text-sm font-semibold">
                         -{discount}% OFF
                       </span>
+                    )}
+                    {product.in_stock === false && (
+                      <div className="absolute inset-0 bg-stone-900/40 flex items-center justify-center rounded-3xl">
+                        <span className="text-white font-semibold bg-stone-800/80 px-6 py-2.5 rounded-full text-base">
+                          Out of Stock
+                        </span>
+                      </div>
                     )}
                   </div>
 
@@ -425,44 +472,52 @@ export default function ProductDetail() {
               </div>
 
               {/* CTAs */}
-              <div className="mt-6 flex gap-3">
-                <Button
-                  data-testid="pdp-add-cart"
-                  onClick={handleAddToCart}
-                  className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-base"
-                >
-                  {added ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" /> Added!
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-4 h-4 mr-2" /> Add to Cart
-                    </>
-                  )}
-                </Button>
-                <Button
-                  data-testid="pdp-wishlist"
-                  size="icon"
-                  variant="outline"
-                  onClick={() => toggle(product)}
-                  className={`h-12 w-12 rounded-full border-gold/40 ${wishlisted ? "bg-rosemist" : ""}`}
-                >
-                  <Heart className={`w-5 h-5 ${wishlisted ? "fill-espresso text-espresso" : "text-espresso"}`} />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => {
-                    if (!isComparing(product.id) && isFull) { toast("Max 3 products in compare"); return; }
-                    toggleCompare(product);
-                    toast(isComparing(product.id) ? "Removed from compare" : "Added to compare — see bar below");
-                  }}
-                  title={isComparing(product.id) ? "Remove from compare" : "Compare this product"}
-                  className={`h-12 w-12 rounded-full border-gold/40 ${isComparing(product.id) ? "bg-espresso text-ivory border-espresso" : ""}`}
-                >
-                  <GitCompareArrows className={`w-5 h-5 ${isComparing(product.id) ? "text-ivory" : "text-espresso"}`} />
-                </Button>
+              <div className="mt-6">
+                {product.in_stock === false ? (
+                  <div>
+                    <div className="flex items-center gap-3 mb-4 p-3 rounded-2xl bg-stone-100 border border-stone-200">
+                      <span className="text-sm font-semibold text-red-500">Out of Stock</span>
+                      <span className="text-xs text-taupe">— temporarily unavailable</span>
+                    </div>
+                    <NotifyMeBox productId={product.id} />
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button
+                      data-testid="pdp-add-cart"
+                      onClick={handleAddToCart}
+                      className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-base"
+                    >
+                      {added ? (
+                        <><Check className="w-4 h-4 mr-2" /> Added!</>
+                      ) : (
+                        <><ShoppingBag className="w-4 h-4 mr-2" /> Add to Cart</>
+                      )}
+                    </Button>
+                    <Button
+                      data-testid="pdp-wishlist"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => toggle(product)}
+                      className={`h-12 w-12 rounded-full border-gold/40 ${wishlisted ? "bg-rosemist" : ""}`}
+                    >
+                      <Heart className={`w-5 h-5 ${wishlisted ? "fill-espresso text-espresso" : "text-espresso"}`} />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        if (!isComparing(product.id) && isFull) { toast("Max 3 products in compare"); return; }
+                        toggleCompare(product);
+                        toast(isComparing(product.id) ? "Removed from compare" : "Added to compare — see bar below");
+                      }}
+                      title={isComparing(product.id) ? "Remove from compare" : "Compare this product"}
+                      className={`h-12 w-12 rounded-full border-gold/40 ${isComparing(product.id) ? "bg-espresso text-ivory border-espresso" : ""}`}
+                    >
+                      <GitCompareArrows className={`w-5 h-5 ${isComparing(product.id) ? "text-ivory" : "text-espresso"}`} />
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Trust pills */}
