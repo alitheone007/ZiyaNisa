@@ -8,16 +8,16 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/proxy:latest
     container_name: ziyanisa-proxy
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      # Let's Encrypt certs (run certbot once on the host to populate)
-      - ./certbot/conf:/etc/letsencrypt:ro
-      - ./certbot/www:/var/www/certbot:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ziyanisa.rule=Host(`ziyanisa.bilionsales.com`)"
+      - "traefik.http.routers.ziyanisa.entrypoints=websecure"
+      - "traefik.http.routers.ziyanisa.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ziyanisa.loadbalancer.server.port=80"
     depends_on:
       - backend
     networks:
+      - proxy
       - app
 
   # ── FastAPI backend ───────────────────────────────────────────────────────────
@@ -99,6 +99,8 @@ services:
       - app
 
 networks:
+  proxy:
+    external: true
   app:
     driver: bridge
 
