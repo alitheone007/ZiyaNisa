@@ -148,6 +148,23 @@ class UserOut(BaseModel):
     contact: str
     is_admin: bool = False
 
+class Review(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    product_id: str
+    user_id: str
+    user_name: str
+    rating: int          # 1–5
+    comment: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ReviewCreate(BaseModel):
+    rating: int
+    comment: str
+
+class WishlistToggle(BaseModel):
+    product: dict        # full product object to store
+
 class SendOtpInput(BaseModel):
     contact: str
 
@@ -592,6 +609,102 @@ async def admin_update_booking_status(
     return {"id": booking_id, "status": status}
 
 
+# ── Order detail ─────────────────────────────────────────────────────────────
+
+@api_router.get("/orders/{order_id}")
+async def get_order(order_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    order = await db.orders.find_one({"id": order_id, "user_id": claims["sub"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+# ── Reviews ───────────────────────────────────────────────────────────────────
+
+@api_router.get("/products/{product_id}/reviews")
+async def get_reviews(
+    product_id: str,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+):
+    skip = (page - 1) * limit
+    total = await db.reviews.count_documents({"product_id": product_id})
+    rows = await db.reviews.find({"product_id": product_id}, {"_id": 0}) \
+        .sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    avg = 0.0
+    if rows:
+        agg = await db.reviews.aggregate([
+            {"$match": {"product_id": product_id}},
+            {"$group": {"_id": None, "avg": {"$avg": "$rating"}}},
+        ]).to_list(1)
+        avg = round(agg[0]["avg"], 1) if agg else 0.0
+    return {"items": rows, "total": total, "page": page,
+            "total_pages": max(1, math.ceil(total / limit)), "avg_rating": avg}
+
+@api_router.post("/products/{product_id}/reviews", response_model=Review)
+async def create_review(
+    product_id: str,
+    payload: ReviewCreate,
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not (1 <= payload.rating <= 5):
+        raise HTTPException(status_code=400, detail="Rating must be 1–5")
+    if not payload.comment.strip():
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    user_doc = await db.users.find_one({"id": claims["sub"]}, {"_id": 0})
+    user_name = (user_doc or {}).get("name") or claims.get("contact", "Customer")
+    existing = await db.reviews.find_one({"product_id": product_id, "user_id": claims["sub"]})
+    if existing:
+        raise HTTPException(status_code=409, detail="You have already reviewed this product")
+    review = Review(
+        product_id=product_id,
+        user_id=claims["sub"],
+        user_name=user_name,
+        rating=payload.rating,
+        comment=payload.comment.strip(),
+    )
+    doc = review.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.reviews.insert_one(doc)
+    return review
+
+
+# ── Wishlist ──────────────────────────────────────────────────────────────────
+
+@api_router.get("/wishlist")
+async def get_wishlist(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    doc = await db.wishlists.find_one({"user_id": claims["sub"]}, {"_id": 0})
+    return doc.get("products", []) if doc else []
+
+@api_router.post("/wishlist/toggle/{product_id}")
+async def toggle_wishlist(
+    product_id: str,
+    body: WishlistToggle,
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    doc = await db.wishlists.find_one({"user_id": uid}, {"_id": 0})
+    products = doc.get("products", []) if doc else []
+    existing_ids = [p["id"] for p in products]
+    if product_id in existing_ids:
+        products = [p for p in products if p["id"] != product_id]
+        added = False
+    else:
+        clean = {k: v for k, v in body.product.items() if k != "_id"}
+        products.append(clean)
+        added = True
+    await db.wishlists.update_one(
+        {"user_id": uid},
+        {"$set": {"products": products, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"added": added, "count": len(products)}
+
+
 # ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────
 
 class Booking(BaseModel):
@@ -747,6 +860,9 @@ async def create_indexes():
     await db.bookings.create_index([("user_id", 1)])
     await db.bookings.create_index([("created_at", -1)])
     await db.bookings.create_index([("date", 1)])
+    await db.reviews.create_index([("product_id", 1), ("created_at", -1)])
+    await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
+    await db.wishlists.create_index([("user_id", 1)], unique=True)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

@@ -24,6 +24,7 @@ export function AuthProvider({ children }) {
     setToken(data.access_token);
     setUser(data.user);
     api.defaults.headers.common["Authorization"] = `Bearer ${data.access_token}`;
+    window.dispatchEvent(new Event("zn:login"));
   }
 
   function updateUser(updates) {
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     delete api.defaults.headers.common["Authorization"];
+    window.dispatchEvent(new Event("zn:logout"));
   }
 
   return (

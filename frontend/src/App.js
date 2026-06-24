@@ -15,6 +15,7 @@ import Account     from "@/pages/Account";
 import Services    from "@/pages/Services";
 import Book        from "@/pages/Book";
 import Admin       from "@/pages/Admin";
+import OrderDetail from "@/pages/OrderDetail";
 import WhatsAppFloat from "@/components/site/WhatsAppFloat";
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
                 <Route path="/services"       element={<Services />} />
                 <Route path="/book/:serviceId" element={<Book />} />
                 <Route path="/admin"          element={<Admin />} />
+                <Route path="/orders/:orderId" element={<OrderDetail />} />
               </Routes>
             </BrowserRouter>
             <Toaster richColors position="top-center" />

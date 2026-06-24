@@ -177,6 +177,12 @@ export default function Account() {
                       {order.upi_ref && (
                         <p className="text-[11px] text-taupe mt-1">UPI Ref: <span className="font-mono">{order.upi_ref}</span></p>
                       )}
+                      <div className="mt-3 pt-3 border-t border-gold/10">
+                        <Link to={`/orders/${order.id}`}
+                          className="text-xs font-medium text-espresso underline underline-offset-2 hover:text-gold transition">
+                          View full order →
+                        </Link>
+                      </div>
                     </motion.div>
                   );
                 })}

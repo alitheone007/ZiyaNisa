@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Star, ShoppingBag, Heart, ChevronRight, Check } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
 import Footer from "@/components/site/Footer";
@@ -10,8 +10,165 @@ import MobileBottomNav from "@/components/site/MobileBottomNav";
 import api from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import { PRODUCTS } from "@/data/seed";
 import { toast } from "sonner";
+
+// ── Star Rating Input ─────────────────────────────────────────────────────────
+function StarInput({ value, onChange }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type="button"
+          onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(n)}
+          className="focus:outline-none">
+          <Star className={`w-6 h-6 transition-colors ${
+            n <= (hover || value) ? "fill-gold text-gold" : "text-stone-300"
+          }`} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Star display (read-only) ──────────────────────────────────────────────────
+function Stars({ rating, size = "w-4 h-4" }) {
+  return (
+    <span className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star key={n} className={`${size} ${n <= Math.round(rating) ? "fill-gold text-gold" : "text-stone-300"}`} />
+      ))}
+    </span>
+  );
+}
+
+// ── Reviews section ───────────────────────────────────────────────────────────
+function ReviewsSection({ productId }) {
+  const { isLoggedIn } = useAuth();
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [rating, setRating]     = useState(0);
+  const [comment, setComment]   = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["reviews", productId],
+    queryFn: () => api.get(`/products/${productId}/reviews`).then(r => r.data),
+    staleTime: 60_000,
+  });
+
+  const { mutate: submit, isPending } = useMutation({
+    mutationFn: () => api.post(`/products/${productId}/reviews`, { rating, comment }),
+    onSuccess: () => {
+      toast.success("Review submitted!");
+      setShowForm(false);
+      setRating(0);
+      setComment("");
+      qc.invalidateQueries({ queryKey: ["reviews", productId] });
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.detail || "Could not submit review.";
+      toast.error(msg);
+    },
+  });
+
+  const reviews    = data?.items || [];
+  const total      = data?.total || 0;
+  const avgRating  = data?.avg_rating || 0;
+
+  return (
+    <div className="mt-20">
+      <div className="text-xs uppercase tracking-[0.25em] text-gold mb-2">Customer Reviews</div>
+      <div className="flex items-end gap-4 mb-6 flex-wrap">
+        <h2 className="font-serif text-2xl text-espresso">
+          {total > 0 ? `${total} Review${total !== 1 ? "s" : ""}` : "No Reviews Yet"}
+        </h2>
+        {total > 0 && (
+          <div className="flex items-center gap-2 mb-1">
+            <Stars rating={avgRating} />
+            <span className="text-sm font-medium text-espresso">{avgRating}</span>
+            <span className="text-sm text-taupe">/ 5</span>
+          </div>
+        )}
+      </div>
+
+      {/* Write a review */}
+      {isLoggedIn && !showForm && (
+        <Button onClick={() => setShowForm(true)} variant="outline"
+          className="rounded-full border-espresso text-espresso gap-2 mb-6 hover:bg-rosemist/40">
+          <MessageSquare className="w-4 h-4" /> Write a Review
+        </Button>
+      )}
+      {!isLoggedIn && (
+        <p className="text-sm text-taupe mb-6">
+          <Link to="/login" className="underline underline-offset-2 hover:text-espresso">Sign in</Link> to leave a review.
+        </p>
+      )}
+
+      <AnimatePresence>
+        {showForm && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="bg-pearl rounded-2xl border border-gold/15 p-5 mb-6">
+            <h3 className="font-medium text-espresso mb-4">Your Review</h3>
+            <div className="mb-3">
+              <p className="text-xs text-taupe mb-1.5">Rating</p>
+              <StarInput value={rating} onChange={setRating} />
+            </div>
+            <div className="mb-4">
+              <p className="text-xs text-taupe mb-1.5">Comment</p>
+              <textarea
+                rows={3}
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="Share your experience with this product…"
+                className="w-full rounded-xl border border-stone-200 px-3 py-2.5 text-sm text-espresso placeholder:text-taupe/60 focus:outline-none focus:ring-1 focus:ring-gold resize-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => submit()} disabled={isPending || rating === 0 || !comment.trim()}
+                className="rounded-full bg-espresso text-ivory px-6">
+                {isPending ? "Submitting…" : "Submit Review"}
+              </Button>
+              <Button variant="ghost" onClick={() => { setShowForm(false); setRating(0); setComment(""); }}
+                className="rounded-full text-taupe">
+                Cancel
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Review list */}
+      {isLoading && (
+        <div className="space-y-3">
+          {[1, 2].map(i => <div key={i} className="h-24 rounded-2xl bg-rosemist/40 animate-pulse" />)}
+        </div>
+      )}
+      {!isLoading && reviews.length === 0 && (
+        <p className="text-taupe text-sm">Be the first to review this product.</p>
+      )}
+      <div className="space-y-4">
+        {reviews.map((r, i) => (
+          <motion.div key={r.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="bg-pearl rounded-2xl border border-gold/10 p-4">
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-espresso">{r.user_name}</p>
+                <p className="text-[11px] text-taupe mt-0.5">
+                  {new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+              </div>
+              <Stars rating={r.rating} size="w-3.5 h-3.5" />
+            </div>
+            <p className="text-sm text-taupe mt-2 leading-relaxed">{r.comment}</p>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -297,6 +454,9 @@ export default function ProductDetail() {
               </div>
             </motion.div>
           </div>
+
+          {/* Reviews */}
+          <ReviewsSection productId={product.id} />
 
           {/* Related products */}
           {related.length > 0 && (
