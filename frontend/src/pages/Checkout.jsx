@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Copy, ArrowLeft, Smartphone, AlertCircle, MapPin } from "lucide-react";
+import {
+  CheckCircle2, Copy, ArrowLeft, Smartphone, AlertCircle, MapPin,
+  Tag, Sparkles, X, Home, Briefcase, MapPinned, RotateCcw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Header from "@/components/site/Header";
@@ -34,10 +37,133 @@ const INDIA_STATES = [
 
 const STEP_LABELS = ["Review", "Delivery", "Pay via UPI", "Confirm"];
 
-// Steps: 0=review, 1=delivery address, 2=pay, 3=confirm, 4=done
+const LABEL_ICON = { Home, Work: Briefcase, Other: MapPinned };
+
+// ── Coupon box ────────────────────────────────────────────────────────────────
+function CouponBox({ subtotal, appliedCoupon, onApply, onRemove }) {
+  const { isLoggedIn } = useAuth();
+  const [code, setCode]      = useState("");
+  const [loading, setLoad]   = useState(false);
+  const [bestLoad, setBL]    = useState(false);
+  const [errMsg, setErr]     = useState("");
+
+  async function apply(overrideCode) {
+    const target = (overrideCode || code).trim().toUpperCase();
+    if (!target) return;
+    setLoad(true); setErr("");
+    try {
+      const res = await api.post("/coupons/validate", { code: target, total: subtotal });
+      onApply(res.data);
+      setCode("");
+      toast.success(`${res.data.label} applied!`);
+    } catch (err) {
+      setErr(err?.response?.data?.detail || "Coupon not found or expired");
+    } finally { setLoad(false); }
+  }
+
+  async function findBest() {
+    setBL(true);
+    try {
+      const res = await api.get(`/coupons/best?total=${subtotal}`);
+      if (res.data) {
+        onApply(res.data);
+        toast.success(`Best offer applied: ${res.data.code} — ${res.data.label}`);
+      } else {
+        toast("No better offer available for this order");
+      }
+    } catch { toast("Couldn't fetch offers right now"); }
+    finally { setBL(false); }
+  }
+
+  if (appliedCoupon) {
+    return (
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-2 text-green-700">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="font-semibold text-sm">{appliedCoupon.code}</span>
+          <span className="text-xs text-green-600">{appliedCoupon.label}</span>
+        </div>
+        <button onClick={onRemove} className="text-green-600 hover:text-red-500 transition p-1">
+          <X className="w-4 h-4" />
+        </button>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Tag className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-taupe" />
+          <Input
+            value={code}
+            onChange={e => { setCode(e.target.value.toUpperCase()); setErr(""); }}
+            onKeyDown={e => e.key === "Enter" && apply()}
+            placeholder="PROMO CODE"
+            className="pl-9 h-10 rounded-xl border-gold/30 bg-ivory text-espresso placeholder:text-taupe/50 font-mono text-sm tracking-widest"
+          />
+        </div>
+        <Button onClick={() => apply()} disabled={!code.trim() || loading}
+          className="h-10 px-4 rounded-xl bg-espresso text-ivory text-sm shrink-0 hover:bg-espresso/90">
+          {loading ? "…" : "Apply"}
+        </Button>
+      </div>
+      {errMsg && <p className="text-xs text-red-500 pl-1">{errMsg}</p>}
+      {isLoggedIn && (
+        <button onClick={findBest} disabled={bestLoad}
+          className="flex items-center gap-1.5 text-xs text-gold hover:text-espresso transition font-medium pl-1">
+          <Sparkles className="w-3.5 h-3.5" />
+          {bestLoad ? "Finding best offer…" : "Find best offer for me"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Saved address picker ──────────────────────────────────────────────────────
+function SavedAddressPicker({ addresses, selectedId, onSelect, onAddNew }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs uppercase tracking-[0.18em] text-taupe font-medium">Your Saved Addresses</p>
+      {addresses.map(addr => {
+        const Icon = LABEL_ICON[addr.label] || MapPin;
+        const active = selectedId === addr.id;
+        return (
+          <button key={addr.id} onClick={() => onSelect(addr)}
+            className={`w-full flex items-start gap-3 rounded-xl border-2 p-3.5 text-left transition-all ${
+              active ? "border-espresso bg-espresso/5" : "border-gold/20 bg-ivory/60 hover:border-gold/50"
+            }`}>
+            <div className={`w-8 h-8 rounded-full grid place-items-center shrink-0 mt-0.5 ${active ? "bg-espresso text-ivory" : "bg-rosemist/60 text-taupe"}`}>
+              <Icon className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-espresso">{addr.label}</span>
+                {addr.is_default && (
+                  <span className="text-[10px] bg-gold/20 text-espresso px-1.5 py-0.5 rounded-full">Default</span>
+                )}
+              </div>
+              <p className="text-xs text-taupe mt-0.5 line-clamp-1">
+                {addr.full_name} · {addr.line1}, {addr.city} — {addr.pin}
+              </p>
+            </div>
+            <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-1 ${active ? "border-espresso bg-espresso" : "border-gold/40"}`} />
+          </button>
+        );
+      })}
+      <button onClick={onAddNew}
+        className="w-full text-xs text-taupe hover:text-espresso transition py-2 border border-dashed border-gold/30 rounded-xl hover:border-gold/60">
+        + Enter a different address
+      </button>
+    </div>
+  );
+}
+
+// Steps: 0=review, 1=delivery, 2=pay, 3=confirm, 4=done
 export default function Checkout() {
   const { items, totalPrice, clearCart } = useCart();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, isLoggedIn } = useAuth();
   const navigate = useNavigate();
 
   const [step,       setStep]       = useState(0);
@@ -45,29 +171,38 @@ export default function Checkout() {
   const [orderId,    setOrderId]    = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const deliveryFee = totalPrice >= 999 ? 0 : 79;
-  const grandTotal  = totalPrice + deliveryFee;
+  // Coupon
+  const [coupon, setCoupon] = useState(null);
 
-  // Delivery form
+  // Saved addresses
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddrId, setSelectedAddrId] = useState(null);
+  const [showNewForm, setShowNewForm]        = useState(true);
+  const [saveAddr, setSaveAddr]              = useState(false);
+
   const [ship, setShip] = useState({
-    full_name: user?.name || "",
-    phone: "",
-    line1: "",
-    line2: "",
-    city: "",
-    state: "",
-    pin: "",
+    full_name: user?.name || "", phone: "", line1: "", line2: "", city: "", state: "", pin: "",
   });
   const [sameAddress, setSameAddress] = useState(true);
-  const [bill, setBill] = useState({
-    full_name: "",
-    phone: "",
-    line1: "",
-    line2: "",
-    city: "",
-    state: "",
-    pin: "",
-  });
+  const [bill, setBill] = useState({ full_name:"",phone:"",line1:"",line2:"",city:"",state:"",pin:"" });
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    api.get("/addresses").then(r => {
+      const addrs = r.data || [];
+      setSavedAddresses(addrs);
+      if (addrs.length > 0) {
+        const def = addrs.find(a => a.is_default) || addrs[0];
+        setSelectedAddrId(def.id);
+        setShip({ full_name:def.full_name,phone:def.phone,line1:def.line1,line2:def.line2||"",city:def.city,state:def.state,pin:def.pin });
+        setShowNewForm(false);
+      }
+    }).catch(() => {});
+  }, [isLoggedIn]);
+
+  const deliveryFee = totalPrice >= 999 ? 0 : 79;
+  const discount    = coupon?.discount || 0;
+  const grandTotal  = Math.max(0, totalPrice + deliveryFee - discount);
 
   if (items.length === 0 && step < 4) {
     return (
@@ -86,28 +221,17 @@ export default function Checkout() {
   }
 
   function validateDelivery() {
-    const req = ["full_name", "phone", "line1", "city", "state", "pin"];
-    for (const f of req) {
+    for (const f of ["full_name","phone","line1","city","state","pin"]) {
       if (!ship[f]?.trim()) {
-        toast.error(`Please fill in: ${f.replace("_", " ").replace("line1", "address line 1")}`);
+        toast.error(`Please fill in: ${f.replace("_"," ").replace("line1","address line 1")}`);
         return false;
       }
     }
-    if (ship.phone.replace(/\D/g, "").length < 10) {
-      toast.error("Please enter a valid 10-digit phone number");
-      return false;
-    }
-    if (ship.pin.replace(/\D/g, "").length !== 6) {
-      toast.error("Please enter a valid 6-digit PIN code");
-      return false;
-    }
+    if (ship.phone.replace(/\D/g,"").length < 10) { toast.error("Valid 10-digit phone required"); return false; }
+    if (ship.pin.replace(/\D/g,"").length !== 6)  { toast.error("Valid 6-digit PIN required");   return false; }
     if (!sameAddress) {
-      const billReq = ["full_name", "line1", "city", "state", "pin"];
-      for (const f of billReq) {
-        if (!bill[f]?.trim()) {
-          toast.error(`Billing: please fill in ${f.replace("_", " ")}`);
-          return false;
-        }
+      for (const f of ["full_name","line1","city","state","pin"]) {
+        if (!bill[f]?.trim()) { toast.error(`Billing: please fill in ${f.replace("_"," ")}`); return false; }
       }
     }
     return true;
@@ -118,6 +242,9 @@ export default function Checkout() {
     if (ship.full_name && !user?.name) {
       try { await api.patch("/auth/profile", { name: ship.full_name }); updateUser({ name: ship.full_name }); } catch {}
     }
+    if (saveAddr && showNewForm && isLoggedIn) {
+      try { await api.post("/addresses", { ...ship, label: "Home", is_default: savedAddresses.length === 0 }); } catch {}
+    }
     setSubmitting(true);
     try {
       const res = await api.post("/orders", {
@@ -125,6 +252,8 @@ export default function Checkout() {
         total: grandTotal,
         shipping_address: ship,
         billing_address: sameAddress ? ship : bill,
+        coupon_code: coupon?.code || null,
+        discount,
       });
       setOrderId(res.data.id);
       setStep(2);
@@ -136,10 +265,7 @@ export default function Checkout() {
   }
 
   async function handleConfirm() {
-    if (!upiRef.trim()) {
-      toast.error("Please enter your UPI transaction ID or last 4 digits");
-      return;
-    }
+    if (!upiRef.trim()) { toast.error("Please enter your UPI transaction ID or last 4 digits"); return; }
     setSubmitting(true);
     try {
       await api.patch(`/orders/${orderId}/confirm`, { upi_ref: upiRef.trim() });
@@ -150,11 +276,6 @@ export default function Checkout() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function copyUpiId() {
-    navigator.clipboard.writeText(UPI_ID);
-    toast.success("UPI ID copied!");
   }
 
   return (
@@ -169,19 +290,14 @@ export default function Checkout() {
             </Link>
           )}
 
-          {/* Step indicator */}
           {step < 4 && (
             <div className="flex items-center gap-2 mb-8 flex-wrap">
               {STEP_LABELS.map((label, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-full grid place-items-center text-xs font-semibold transition-colors ${
-                    i <= step ? "bg-espresso text-ivory" : "bg-rosemist text-taupe"
-                  }`}>
+                  <div className={`w-7 h-7 rounded-full grid place-items-center text-xs font-semibold transition-colors ${i <= step ? "bg-espresso text-ivory" : "bg-rosemist text-taupe"}`}>
                     {i < step ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
                   </div>
-                  <span className={`text-xs hidden sm:inline ${i <= step ? "text-espresso font-medium" : "text-taupe"}`}>
-                    {label}
-                  </span>
+                  <span className={`text-xs hidden sm:inline ${i <= step ? "text-espresso font-medium" : "text-taupe"}`}>{label}</span>
                   {i < STEP_LABELS.length - 1 && <div className={`h-px w-4 sm:w-8 ${i < step ? "bg-espresso" : "bg-gold/20"}`} />}
                 </div>
               ))}
@@ -190,9 +306,9 @@ export default function Checkout() {
 
           <AnimatePresence mode="wait">
 
-            {/* ── Step 0: Review Order ── */}
+            {/* ── Step 0: Review ── */}
             {step === 0 && (
-              <motion.div key="review" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+              <motion.div key="review" initial={{ opacity:0,y:16 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-16 }}>
                 <h1 className="font-serif text-3xl text-espresso mb-6">Review Your Order</h1>
 
                 <div className="space-y-3 mb-6">
@@ -207,24 +323,40 @@ export default function Checkout() {
                         <div className="text-xs text-taupe mt-1">Qty: {item.qty}</div>
                       </div>
                       <div className="text-sm font-semibold text-espresso shrink-0">
-                        Rs.{(item.price * item.qty).toLocaleString("en-IN")}
+                        ₹{(item.price * item.qty).toLocaleString("en-IN")}
                       </div>
                     </div>
                   ))}
                 </div>
 
+                {/* Coupon */}
+                <div className="bg-pearl rounded-2xl border border-gold/15 p-5 mb-5">
+                  <p className="text-xs uppercase tracking-[0.18em] text-taupe font-medium mb-3 flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5 text-gold" /> Have a promo code?
+                  </p>
+                  <CouponBox subtotal={totalPrice} appliedCoupon={coupon} onApply={setCoupon} onRemove={() => setCoupon(null)} />
+                </div>
+
+                {/* Summary */}
                 <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-3 text-sm mb-6">
-                  <div className="flex justify-between text-taupe">
-                    <span>Subtotal</span><span>Rs.{totalPrice.toLocaleString("en-IN")}</span>
-                  </div>
+                  <div className="flex justify-between text-taupe"><span>Subtotal</span><span>₹{totalPrice.toLocaleString("en-IN")}</span></div>
                   <div className="flex justify-between text-taupe">
                     <span>Delivery</span>
-                    <span className={deliveryFee === 0 ? "text-green-600 font-medium" : ""}>
-                      {deliveryFee === 0 ? "FREE" : `Rs.${deliveryFee}`}
-                    </span>
+                    <span className={deliveryFee === 0 ? "text-green-600 font-medium" : ""}>{deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}</span>
                   </div>
+                  {discount > 0 && (
+                    <motion.div initial={{ opacity:0,height:0 }} animate={{ opacity:1,height:"auto" }}
+                      className="flex justify-between text-green-600 font-medium">
+                      <span className="flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" />{coupon.code}</span>
+                      <span>−₹{discount.toLocaleString("en-IN")}</span>
+                    </motion.div>
+                  )}
                   <div className="border-t border-gold/15 pt-3 flex justify-between font-semibold text-base text-espresso">
-                    <span>Total to Pay</span><span>Rs.{grandTotal.toLocaleString("en-IN")}</span>
+                    <span>Total to Pay</span>
+                    <div className="text-right">
+                      {discount > 0 && <span className="text-xs text-taupe line-through mr-2">₹{(totalPrice+deliveryFee).toLocaleString("en-IN")}</span>}
+                      <span>₹{grandTotal.toLocaleString("en-IN")}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -234,34 +366,58 @@ export default function Checkout() {
               </motion.div>
             )}
 
-            {/* ── Step 1: Delivery Address ── */}
+            {/* ── Step 1: Delivery ── */}
             {step === 1 && (
-              <motion.div key="delivery" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+              <motion.div key="delivery" initial={{ opacity:0,y:16 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-16 }}>
                 <h1 className="font-serif text-3xl text-espresso mb-2 flex items-center gap-2">
                   <MapPin className="w-6 h-6 text-gold" /> Delivery Details
                 </h1>
                 <p className="text-taupe text-sm mb-6">Where should we deliver your order?</p>
 
-                <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-4 mb-5">
-                  <AddressForm values={ship} onChange={setShip} label="Shipping Address" />
-                </div>
+                {savedAddresses.length > 0 && !showNewForm ? (
+                  <div className="bg-pearl rounded-2xl border border-gold/15 p-5 mb-4">
+                    <SavedAddressPicker
+                      addresses={savedAddresses}
+                      selectedId={selectedAddrId}
+                      onSelect={addr => {
+                        setSelectedAddrId(addr.id);
+                        setShip({ full_name:addr.full_name,phone:addr.phone,line1:addr.line1,line2:addr.line2||"",city:addr.city,state:addr.state,pin:addr.pin });
+                        setShowNewForm(false);
+                      }}
+                      onAddNew={() => {
+                        setSelectedAddrId(null);
+                        setShowNewForm(true);
+                        setShip({ full_name:user?.name||"",phone:"",line1:"",line2:"",city:"",state:"",pin:"" });
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {savedAddresses.length > 0 && (
+                      <button onClick={() => { setShowNewForm(false); const a=savedAddresses.find(x=>x.is_default)||savedAddresses[0]; setSelectedAddrId(a.id); setShip({ full_name:a.full_name,phone:a.phone,line1:a.line1,line2:a.line2||"",city:a.city,state:a.state,pin:a.pin }); }}
+                        className="inline-flex items-center gap-1.5 text-xs text-taupe hover:text-espresso transition mb-3">
+                        <RotateCcw className="w-3 h-3" /> Use saved address
+                      </button>
+                    )}
+                    <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-4 mb-4">
+                      <AddressForm values={ship} onChange={setShip} label="Shipping Address" />
+                    </div>
+                    {isLoggedIn && (
+                      <label className="flex items-center gap-2.5 cursor-pointer px-1 mb-3 select-none">
+                        <input type="checkbox" checked={saveAddr} onChange={e => setSaveAddr(e.target.checked)} className="w-4 h-4 accent-espresso rounded" />
+                        <span className="text-sm text-espresso">Save this address for future orders</span>
+                      </label>
+                    )}
+                  </>
+                )}
 
-                {/* Billing address toggle */}
                 <label className="flex items-center gap-3 cursor-pointer px-1 mb-5 select-none">
-                  <input
-                    type="checkbox"
-                    checked={sameAddress}
-                    onChange={e => setSameAddress(e.target.checked)}
-                    className="w-4 h-4 accent-espresso rounded"
-                  />
+                  <input type="checkbox" checked={sameAddress} onChange={e => setSameAddress(e.target.checked)} className="w-4 h-4 accent-espresso rounded" />
                   <span className="text-sm text-espresso">Billing address is same as shipping address</span>
                 </label>
 
                 {!sameAddress && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-5"
-                  >
+                  <motion.div initial={{ opacity:0,height:0 }} animate={{ opacity:1,height:"auto" }} exit={{ opacity:0,height:0 }} className="overflow-hidden mb-5">
                     <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-4">
                       <AddressForm values={bill} onChange={setBill} label="Billing Address" />
                     </div>
@@ -269,9 +425,7 @@ export default function Checkout() {
                 )}
 
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setStep(0)} className="flex-1 h-12 rounded-full border-gold/40 text-espresso">
-                    Back
-                  </Button>
+                  <Button variant="outline" onClick={() => setStep(0)} className="flex-1 h-12 rounded-full border-gold/40 text-espresso">Back</Button>
                   <Button onClick={handlePlaceOrder} disabled={submitting} className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 text-base font-medium">
                     {submitting ? "Placing order…" : "Continue to Pay"}
                   </Button>
@@ -279,13 +433,13 @@ export default function Checkout() {
               </motion.div>
             )}
 
-            {/* ── Step 2: UPI Payment ── */}
+            {/* ── Step 2: UPI ── */}
             {step === 2 && (
-              <motion.div key="pay" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+              <motion.div key="pay" initial={{ opacity:0,y:16 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-16 }}>
                 <h1 className="font-serif text-3xl text-espresso mb-2">Pay via UPI</h1>
                 <p className="text-taupe text-sm mb-6">
                   Scan the QR code or use the UPI ID below. Pay exactly{" "}
-                  <span className="font-semibold text-espresso">Rs.{grandTotal.toLocaleString("en-IN")}</span>.
+                  <span className="font-semibold text-espresso">₹{grandTotal.toLocaleString("en-IN")}</span>.
                 </p>
 
                 <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -296,7 +450,7 @@ export default function Checkout() {
                       <p className="text-xs text-taupe">MS BILIION SALES AND SERVICES</p>
                       <div className="flex items-center gap-1.5 mt-1 justify-center">
                         <span className="text-sm font-semibold text-espresso">{UPI_ID}</span>
-                        <button onClick={copyUpiId} className="text-taupe hover:text-espresso transition">
+                        <button onClick={() => { navigator.clipboard.writeText(UPI_ID); toast.success("Copied!"); }} className="text-taupe hover:text-espresso transition">
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -311,12 +465,12 @@ export default function Checkout() {
                       {[
                         "Open PhonePe, GPay, Paytm or any UPI app",
                         "Scan the QR code or enter UPI ID manually",
-                        `Enter amount Rs.${grandTotal.toLocaleString("en-IN")} exactly`,
+                        `Enter amount ₹${grandTotal.toLocaleString("en-IN")} exactly`,
                         "Complete the payment and note the Transaction ID",
                         "Come back here, then tap I've Paid to confirm",
                       ].map((s, i) => (
                         <div key={i} className="flex gap-2.5 text-sm text-taupe">
-                          <span className="w-4 h-4 rounded-full bg-espresso/10 text-espresso text-[10px] grid place-items-center shrink-0 mt-0.5 font-semibold">{i + 1}</span>
+                          <span className="w-4 h-4 rounded-full bg-espresso/10 text-espresso text-[10px] grid place-items-center shrink-0 mt-0.5 font-semibold">{i+1}</span>
                           {s}
                         </div>
                       ))}
@@ -325,6 +479,12 @@ export default function Checkout() {
                       <AlertCircle className="w-4 h-4 text-gold shrink-0 mt-0.5" />
                       Orders are dispatched within 24 hours after payment is verified by our team.
                     </div>
+                    {discount > 0 && (
+                      <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs">
+                        <span className="text-green-700 font-medium">Coupon saving</span>
+                        <span className="text-green-700 font-bold">−₹{discount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -336,28 +496,20 @@ export default function Checkout() {
 
             {/* ── Step 3: Confirm ── */}
             {step === 3 && (
-              <motion.div key="confirm" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}>
+              <motion.div key="confirm" initial={{ opacity:0,y:16 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-16 }}>
                 <h1 className="font-serif text-3xl text-espresso mb-2">Confirm Payment</h1>
-                <p className="text-taupe text-sm mb-6">
-                  Enter your UPI Transaction ID (or last 4 digits) so we can verify your payment quickly.
-                </p>
+                <p className="text-taupe text-sm mb-6">Enter your UPI Transaction ID (or last 4 digits) so we can verify quickly.</p>
 
                 <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-5">
                   <div>
-                    <label className="text-xs uppercase tracking-[0.18em] text-taupe block mb-2">
-                      UPI Transaction ID / Reference
-                    </label>
-                    <Input
-                      type="text"
-                      value={upiRef}
-                      onChange={e => setUpiRef(e.target.value)}
+                    <label className="text-xs uppercase tracking-[0.18em] text-taupe block mb-2">UPI Transaction ID / Reference</label>
+                    <Input type="text" value={upiRef} onChange={e => setUpiRef(e.target.value)}
                       placeholder="e.g. 407812345678 or last 4 digits"
-                      className="h-11 rounded-xl border-gold/30 bg-ivory text-espresso placeholder:text-taupe/60 focus-visible:ring-gold/40"
-                    />
+                      className="h-11 rounded-xl border-gold/30 bg-ivory text-espresso placeholder:text-taupe/60 focus-visible:ring-gold/40" />
                   </div>
                   <div className="flex justify-between text-sm border-t border-gold/10 pt-4">
                     <span className="text-taupe">Amount paid</span>
-                    <span className="font-semibold text-espresso">Rs.{grandTotal.toLocaleString("en-IN")}</span>
+                    <span className="font-semibold text-espresso">₹{grandTotal.toLocaleString("en-IN")}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-taupe">UPI ID</span>
@@ -366,9 +518,7 @@ export default function Checkout() {
                 </div>
 
                 <div className="flex gap-3 mt-6">
-                  <Button variant="outline" onClick={() => setStep(2)} className="flex-1 h-12 rounded-full border-gold/40 text-espresso">
-                    Back
-                  </Button>
+                  <Button variant="outline" onClick={() => setStep(2)} className="flex-1 h-12 rounded-full border-gold/40 text-espresso">Back</Button>
                   <Button onClick={handleConfirm} disabled={submitting} className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90">
                     {submitting ? "Confirming…" : "Confirm Order"}
                   </Button>
@@ -376,14 +526,9 @@ export default function Checkout() {
               </motion.div>
             )}
 
-            {/* ── Step 4: Success ── */}
+            {/* ── Step 4: Done ── */}
             {step === 4 && (
-              <motion.div
-                key="done"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-12"
-              >
+              <motion.div key="done" initial={{ opacity:0,scale:0.95 }} animate={{ opacity:1,scale:1 }} className="text-center py-12">
                 <div className="w-20 h-20 rounded-full bg-rosemist grid place-items-center mx-auto mb-5">
                   <CheckCircle2 className="w-10 h-10 text-espresso" />
                 </div>
@@ -391,16 +536,15 @@ export default function Checkout() {
                 <p className="text-taupe text-sm max-w-sm mx-auto mb-1">
                   Thank you! Our team will verify your payment and dispatch within 24 hours.
                 </p>
-                <p className="text-xs text-taupe mb-8">
-                  Order ID: <span className="font-mono text-espresso">{orderId}</span>
-                </p>
+                {discount > 0 && (
+                  <p className="text-xs text-green-600 mb-1 font-medium">
+                    You saved ₹{discount.toLocaleString("en-IN")} with coupon {coupon?.code}!
+                  </p>
+                )}
+                <p className="text-xs text-taupe mb-8">Order ID: <span className="font-mono text-espresso">{orderId}</span></p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button onClick={() => navigate("/shop")} className="rounded-full bg-espresso text-ivory px-8 h-12">
-                    Continue Shopping
-                  </Button>
-                  <Button variant="outline" onClick={() => navigate("/account")} className="rounded-full border-gold/40 text-espresso px-8 h-12">
-                    View My Orders
-                  </Button>
+                  <Button onClick={() => navigate("/shop")} className="rounded-full bg-espresso text-ivory px-8 h-12">Continue Shopping</Button>
+                  <Button variant="outline" onClick={() => navigate("/account")} className="rounded-full border-gold/40 text-espresso px-8 h-12">View My Orders</Button>
                 </div>
               </motion.div>
             )}
@@ -421,26 +565,21 @@ function AddressForm({ values, onChange, label }) {
       <h3 className="text-xs uppercase tracking-[0.2em] text-taupe font-medium">{label}</h3>
       <div className="grid sm:grid-cols-2 gap-4">
         <FormField label="Full Name" required>
-          <Input value={values.full_name} onChange={e => set("full_name", e.target.value)}
-            placeholder="Ziya Nisa" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+          <Input value={values.full_name} onChange={e => set("full_name", e.target.value)} placeholder="Ziya Nisa" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
         </FormField>
         <FormField label="Phone Number" required>
-          <Input value={values.phone} onChange={e => set("phone", e.target.value)}
-            placeholder="9876543210" inputMode="tel" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+          <Input value={values.phone} onChange={e => set("phone", e.target.value)} placeholder="9876543210" inputMode="tel" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
         </FormField>
       </div>
       <FormField label="Address Line 1" required>
-        <Input value={values.line1} onChange={e => set("line1", e.target.value)}
-          placeholder="House / Flat / Building / Street" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+        <Input value={values.line1} onChange={e => set("line1", e.target.value)} placeholder="House / Flat / Building / Street" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
       </FormField>
       <FormField label="Address Line 2">
-        <Input value={values.line2} onChange={e => set("line2", e.target.value)}
-          placeholder="Area / Locality (optional)" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+        <Input value={values.line2} onChange={e => set("line2", e.target.value)} placeholder="Area / Locality (optional)" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
       </FormField>
       <div className="grid sm:grid-cols-3 gap-4">
         <FormField label="City" required>
-          <Input value={values.city} onChange={e => set("city", e.target.value)}
-            placeholder="Hyderabad" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+          <Input value={values.city} onChange={e => set("city", e.target.value)} placeholder="Hyderabad" className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
         </FormField>
         <FormField label="State" required>
           <select value={values.state} onChange={e => set("state", e.target.value)}
@@ -450,8 +589,7 @@ function AddressForm({ values, onChange, label }) {
           </select>
         </FormField>
         <FormField label="PIN Code" required>
-          <Input value={values.pin} onChange={e => set("pin", e.target.value)}
-            placeholder="500001" inputMode="numeric" maxLength={6} className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
+          <Input value={values.pin} onChange={e => set("pin", e.target.value)} placeholder="500001" inputMode="numeric" maxLength={6} className="h-10 rounded-xl border-gold/25 bg-ivory/70" />
         </FormField>
       </div>
     </>

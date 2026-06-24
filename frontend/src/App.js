@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { CartProvider }     from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 import { AuthProvider }     from "@/context/AuthContext";
+import { CompareProvider }  from "@/context/CompareContext";
 import Home        from "@/pages/Home";
 import Shop        from "@/pages/Shop";
 import ProductDetail from "@/pages/ProductDetail";
@@ -17,35 +18,43 @@ import Book        from "@/pages/Book";
 import Admin       from "@/pages/Admin";
 import OrderDetail from "@/pages/OrderDetail";
 import Search      from "@/pages/Search";
+import SkinQuiz    from "@/pages/SkinQuiz";
+import Compare     from "@/pages/Compare";
 import WhatsAppFloat from "@/components/site/WhatsAppFloat";
+import CompareBar    from "@/components/site/CompareBar";
 
 function App() {
   return (
     <AuthProvider>
       <CartProvider>
         <WishlistProvider>
-          <div className="App">
-            <BrowserRouter>
-              <Routes>
-                <Route path="/"               element={<Home />} />
-                <Route path="/shop"           element={<Shop />} />
-                <Route path="/shop/:category" element={<Shop />} />
-                <Route path="/product/:slug"  element={<ProductDetail />} />
-                <Route path="/cart"           element={<Cart />} />
-                <Route path="/wishlist"       element={<Wishlist />} />
-                <Route path="/login"          element={<Login />} />
-                <Route path="/checkout"       element={<Checkout />} />
-                <Route path="/account"        element={<Account />} />
-                <Route path="/services"       element={<Services />} />
-                <Route path="/book/:serviceId" element={<Book />} />
-                <Route path="/admin"          element={<Admin />} />
-                <Route path="/orders/:orderId" element={<OrderDetail />} />
-                <Route path="/search"         element={<Search />} />
-              </Routes>
-            </BrowserRouter>
-            <Toaster richColors position="top-center" />
-            <WhatsAppFloat />
-          </div>
+          <CompareProvider>
+            <div className="App">
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/"                element={<Home />} />
+                  <Route path="/shop"            element={<Shop />} />
+                  <Route path="/shop/:category"  element={<Shop />} />
+                  <Route path="/product/:slug"   element={<ProductDetail />} />
+                  <Route path="/cart"            element={<Cart />} />
+                  <Route path="/wishlist"        element={<Wishlist />} />
+                  <Route path="/login"           element={<Login />} />
+                  <Route path="/checkout"        element={<Checkout />} />
+                  <Route path="/account"         element={<Account />} />
+                  <Route path="/services"        element={<Services />} />
+                  <Route path="/book/:serviceId" element={<Book />} />
+                  <Route path="/admin"           element={<Admin />} />
+                  <Route path="/orders/:orderId" element={<OrderDetail />} />
+                  <Route path="/search"          element={<Search />} />
+                  <Route path="/skin-quiz"       element={<SkinQuiz />} />
+                  <Route path="/compare"         element={<Compare />} />
+                </Routes>
+                <CompareBar />
+              </BrowserRouter>
+              <Toaster richColors position="top-center" />
+              <WhatsAppFloat />
+            </div>
+          </CompareProvider>
         </WishlistProvider>
       </CartProvider>
     </AuthProvider>

@@ -136,12 +136,16 @@ class Order(BaseModel):
     user_id: Optional[str] = None
     shipping_address: Optional[dict] = None
     billing_address: Optional[dict] = None
+    coupon_code: Optional[str] = None
+    discount: int = 0
 
 class OrderCreate(BaseModel):
     items: list
     total: int
     shipping_address: Optional[dict] = None
     billing_address: Optional[dict] = None
+    coupon_code: Optional[str] = None
+    discount: int = 0
 
 class UserOut(BaseModel):
     id: str
@@ -165,6 +169,44 @@ class ReviewCreate(BaseModel):
 
 class WishlistToggle(BaseModel):
     product: dict        # full product object to store
+
+class AddressCreate(BaseModel):
+    label: str = "Home"          # "Home" | "Work" | "Other"
+    full_name: str
+    phone: str
+    line1: str
+    line2: Optional[str] = None
+    city: str
+    state: str
+    pin: str
+    is_default: bool = False
+
+class AddressOut(AddressCreate):
+    id: str
+
+class CouponValidateInput(BaseModel):
+    code: str
+    total: int                   # cart subtotal before discount
+
+class CouponOut(BaseModel):
+    code: str
+    type: str
+    value: int
+    min_order: int = 0
+    max_discount: Optional[int] = None
+    discount: int                # computed discount amount
+    final_total: int
+    label: str                   # human-readable description
+
+class SkinProfileCreate(BaseModel):
+    skin_type: str               # "oily" | "dry" | "combination" | "normal" | "sensitive"
+    concerns: List[str]          # ["acne","dark_spots","aging","dullness","pores","sensitivity"]
+    skin_tone: str               # "fair" | "medium" | "dusky" | "deep"
+    sensitivity: str             # "low" | "medium" | "high"
+
+class SkinProfileOut(SkinProfileCreate):
+    id: str
+    updated_at: str
 
 class SendOtpInput(BaseModel):
     contact: str
@@ -317,6 +359,29 @@ SERVICES_SEED: List[dict] = [
     {"id":"s4","name":"Pearl Pedicure","duration":"60 min","price":899,"rating":4.6,"img":"https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&q=80","level":"Trained","tag":"Relax"},
 ]
 
+COUPON_SEEDS: List[dict] = [
+    {"code": "WELCOME200", "type": "first_order", "value": 200, "min_order": 999,  "active": True, "used_count": 0},
+    {"code": "GLOW15",     "type": "percent",     "value": 15,  "min_order": 799,  "active": True, "used_count": 0, "max_discount": 500},
+    {"code": "SKIN20",     "type": "percent",     "value": 20,  "min_order": 499,  "active": True, "used_count": 0, "max_discount": 400},
+    {"code": "ZN50",       "type": "flat",        "value": 50,  "min_order": 299,  "active": True, "used_count": 0},
+    {"code": "BRIDAL500",  "type": "flat",        "value": 500, "min_order": 3999, "active": True, "used_count": 0},
+]
+
+# Maps skin concerns/types → active ingredient keywords for personalization
+CONCERN_ACTIVES: dict = {
+    "acne":        ["niacinamide", "salicylic acid", "tea tree", "zinc", "kalonji", "charcoal"],
+    "dark_spots":  ["vitamin c", "niacinamide", "kojic acid", "saffron", "alpha arbutin", "aha"],
+    "aging":       ["retinol", "bakuchiol", "peptides", "vitamin c", "hyaluronic acid", "collagen"],
+    "dullness":    ["vitamin c", "saffron", "niacinamide", "glycolic acid", "aha", "pearl"],
+    "pores":       ["niacinamide", "salicylic acid", "zinc", "aha", "clay", "kaolin"],
+    "sensitivity": ["aloe", "centella", "ceramide", "allantoin", "glycerin", "chamomile"],
+    "oily":        ["niacinamide", "salicylic acid", "zinc", "clay", "charcoal", "kaolin"],
+    "dry":         ["hyaluronic acid", "ceramide", "shea", "glycerin", "squalane", "argan"],
+    "combination": ["niacinamide", "hyaluronic acid", "ceramide"],
+    "normal":      ["hyaluronic acid", "vitamin c", "niacinamide"],
+    "sensitive":   ["ceramide", "aloe", "centella", "glycerin", "allantoin"],
+}
+
 
 # ── Health endpoints ───────────────────────────────────────────────────────────
 
@@ -400,6 +465,46 @@ async def get_products(
         cursor = cursor.sort(mongo_sort)
     items = await cursor.to_list(limit)
     return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
+
+@api_router.get("/products/for-me", response_model=ProductsPage)
+async def products_for_me(
+    limit: int = Query(8, ge=1, le=20),
+    authorization: Optional[str] = Header(None),
+):
+    """Return products ranked by match to the user's skin profile."""
+    profile = None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            claims = decode_token(authorization.split(" ", 1)[1])
+            profile = await db.skin_profiles.find_one({"user_id": claims["sub"]}, {"_id": 0})
+        except Exception:
+            pass
+
+    all_products = await db.products.find({}, {"_id": 0}).to_list(500)
+    if not all_products:
+        all_products = PRODUCTS_SEED
+
+    if not profile:
+        # No profile — return top skincare/haircare by rating
+        care = [p for p in all_products if p.get("category_id") in ("skincare", "haircare", "bath-body")]
+        care = sorted(care, key=lambda p: p.get("rating", 0), reverse=True)[:limit]
+        return {"items": care, "total": len(care), "page": 1, "total_pages": 1}
+
+    # Build keyword set from skin type + concerns
+    keywords: set = set()
+    keywords.update(CONCERN_ACTIVES.get(profile.get("skin_type", ""), []))
+    for concern in profile.get("concerns", []):
+        keywords.update(CONCERN_ACTIVES.get(concern, []))
+
+    def score(p: dict) -> float:
+        actives = [a.lower() for a in p.get("actives", [])]
+        name = p.get("name", "").lower()
+        match_count = sum(1 for kw in keywords if any(kw in a for a in actives) or kw in name)
+        return match_count * 10 + p.get("rating", 0)
+
+    scored = sorted(all_products, key=score, reverse=True)[:limit]
+    return {"items": scored, "total": len(scored), "page": 1, "total_pages": 1}
+
 
 @api_router.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str):
@@ -555,6 +660,9 @@ async def seed_db():
     if await db.services.count_documents({}) == 0:
         await db.services.insert_many([{**s} for s in SERVICES_SEED])
         seeded.append(f"{len(SERVICES_SEED)} services")
+    if await db.coupons.count_documents({}) == 0:
+        await db.coupons.insert_many([{**c} for c in COUPON_SEEDS])
+        seeded.append(f"{len(COUPON_SEEDS)} coupons")
     if seeded:
         return {"message": f"Seeded: {', '.join(seeded)}."}
     return {"message": "Already seeded. Skipped."}
@@ -724,6 +832,145 @@ async def toggle_wishlist(
     return {"added": added, "count": len(products)}
 
 
+# ── Address Book ──────────────────────────────────────────────────────────────
+
+@api_router.get("/addresses", response_model=List[AddressOut])
+async def list_addresses(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    rows = await db.addresses.find({"user_id": claims["sub"]}, {"_id": 0}).sort("created_at", 1).to_list(10)
+    return rows
+
+@api_router.post("/addresses", response_model=AddressOut)
+async def create_address(payload: AddressCreate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    if payload.is_default:
+        await db.addresses.update_many({"user_id": uid}, {"$set": {"is_default": False}})
+    count = await db.addresses.count_documents({"user_id": uid})
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": uid,
+        "is_default": payload.is_default or count == 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        **payload.model_dump(),
+    }
+    await db.addresses.insert_one(doc)
+    return doc
+
+@api_router.patch("/addresses/{addr_id}/default")
+async def set_default_address(addr_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    await db.addresses.update_many({"user_id": uid}, {"$set": {"is_default": False}})
+    result = await db.addresses.update_one({"id": addr_id, "user_id": uid}, {"$set": {"is_default": True}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Address not found")
+    return {"id": addr_id, "is_default": True}
+
+@api_router.delete("/addresses/{addr_id}")
+async def delete_address(addr_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    result = await db.addresses.delete_one({"id": addr_id, "user_id": claims["sub"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Address not found")
+    return {"deleted": True}
+
+
+# ── Coupons ───────────────────────────────────────────────────────────────────
+
+def _compute_discount(coupon: dict, total: int) -> int:
+    if coupon["type"] == "flat":
+        return min(coupon["value"], total)
+    if coupon["type"] in ("percent", "first_order"):
+        disc = int(total * coupon["value"] / 100)
+        if coupon.get("max_discount"):
+            disc = min(disc, coupon["max_discount"])
+        return min(disc, total)
+    return 0
+
+def _coupon_label(coupon: dict) -> str:
+    if coupon["type"] == "flat":
+        return f"₹{coupon['value']} off"
+    if coupon["type"] in ("percent", "first_order"):
+        s = f"{coupon['value']}% off"
+        if coupon.get("max_discount"):
+            s += f" (max ₹{coupon['max_discount']})"
+        return s
+    return "Discount applied"
+
+@api_router.post("/coupons/validate", response_model=CouponOut)
+async def validate_coupon(payload: CouponValidateInput, authorization: Optional[str] = Header(None)):
+    code = payload.code.strip().upper()
+    coupon = await db.coupons.find_one({"code": code, "active": True}, {"_id": 0})
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon not found or expired")
+    if payload.total < coupon.get("min_order", 0):
+        raise HTTPException(status_code=400, detail=f"Minimum order ₹{coupon['min_order']} required for this coupon")
+    if coupon["type"] == "first_order" and authorization and authorization.startswith("Bearer "):
+        try:
+            claims = decode_token(authorization.split(" ", 1)[1])
+            past = await db.orders.count_documents({"user_id": claims["sub"]})
+            if past > 0:
+                raise HTTPException(status_code=400, detail="This coupon is for first-time orders only")
+        except HTTPException as exc:
+            raise exc
+        except Exception:
+            pass
+    disc = _compute_discount(coupon, payload.total)
+    return CouponOut(
+        code=code, type=coupon["type"], value=coupon["value"],
+        min_order=coupon.get("min_order", 0), max_discount=coupon.get("max_discount"),
+        discount=disc, final_total=max(0, payload.total - disc), label=_coupon_label(coupon),
+    )
+
+@api_router.get("/coupons/best")
+async def best_coupon(total: int = Query(..., ge=1), authorization: Optional[str] = Header(None)):
+    coupons = await db.coupons.find({"active": True, "min_order": {"$lte": total}}, {"_id": 0}).to_list(50)
+    if not coupons:
+        return None
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            claims = decode_token(authorization.split(" ", 1)[1])
+            past = await db.orders.count_documents({"user_id": claims["sub"]})
+            if past > 0:
+                coupons = [c for c in coupons if c["type"] != "first_order"]
+        except Exception:
+            pass
+    if not coupons:
+        return None
+    best = max(coupons, key=lambda c: _compute_discount(c, total))
+    disc = _compute_discount(best, total)
+    if disc == 0:
+        return None
+    return CouponOut(
+        code=best["code"], type=best["type"], value=best["value"],
+        min_order=best.get("min_order", 0), max_discount=best.get("max_discount"),
+        discount=disc, final_total=max(0, total - disc), label=_coupon_label(best),
+    )
+
+
+# ── Skin Profile ──────────────────────────────────────────────────────────────
+
+@api_router.get("/skin-profile")
+async def get_skin_profile(authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    doc = await db.skin_profiles.find_one({"user_id": claims["sub"]}, {"_id": 0})
+    return doc
+
+@api_router.post("/skin-profile", response_model=SkinProfileOut)
+async def save_skin_profile(payload: SkinProfileCreate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": uid,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **payload.model_dump(),
+    }
+    await db.skin_profiles.update_one({"user_id": uid}, {"$set": doc}, upsert=True)
+    return doc
+
+
 # ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────
 
 class Booking(BaseModel):
@@ -874,6 +1121,14 @@ async def create_indexes():
     await db.users.create_index([("contact", 1)], unique=True, sparse=True)
     await db.users.create_index([("phone", 1)], sparse=True)
     await db.chat_sessions.create_index([("phone", 1)], unique=True)
+    await db.reviews.create_index([("product_id", 1), ("user_id", 1)], unique=True)
+    await db.wishlists.create_index([("user_id", 1)], unique=True)
+    await db.addresses.create_index([("user_id", 1)])
+    await db.skin_profiles.create_index([("user_id", 1)], unique=True)
+    await db.coupons.create_index([("code", 1)], unique=True)
+    # Seed coupons if missing
+    if await db.coupons.count_documents({}) == 0:
+        await db.coupons.insert_many([{**c} for c in COUPON_SEEDS])
     # Auto-expire idle chat sessions after 7 days
     await db.chat_sessions.create_index([("last_active", 1)], expireAfterSeconds=604800)
     await db.bookings.create_index([("user_id", 1)])

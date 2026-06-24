@@ -35,7 +35,7 @@ export default function Search() {
   const [category, setCat]  = useState("");
   const [page, setPage]     = useState(1);
 
-  const q = useDebounced(input);
+  const q = useDebounce(input);
 
   // Reset page when query changes
   useEffect(() => { setPage(1); }, [q, sort, category]);

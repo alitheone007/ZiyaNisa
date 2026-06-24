@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, MapPin, Heart, ShoppingBag, User, Menu, LogOut, Package, LayoutDashboard } from "lucide-react";
+import { Search, MapPin, Heart, ShoppingBag, User, Menu, LogOut, Package, LayoutDashboard, Sparkles } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,6 +176,9 @@ export default function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/account")} className="text-espresso focus:bg-rosemist gap-2">
                   <Package className="w-4 h-4" /> My Orders
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/skin-quiz")} className="text-espresso focus:bg-rosemist gap-2">
+                  <Sparkles className="w-4 h-4 text-gold" /> Skin Quiz
                 </DropdownMenuItem>
                 {user?.is_admin && (
                   <>

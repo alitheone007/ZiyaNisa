@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare } from "lucide-react";
+import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare, GitCompareArrows } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
 import Footer from "@/components/site/Footer";
@@ -11,6 +11,7 @@ import api from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { useAuth } from "@/context/AuthContext";
+import { useCompare } from "@/context/CompareContext";
 import { PRODUCTS } from "@/data/seed";
 import { toast } from "sonner";
 
@@ -175,6 +176,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { toggle, isWishlisted } = useWishlist();
+  const { toggle: toggleCompare, isComparing, isFull } = useCompare();
   const [qty, setQty]           = useState(1);
   const [added, setAdded]       = useState(false);
   const [activeImg, setActiveImg] = useState(0);
@@ -444,17 +446,22 @@ export default function ProductDetail() {
                   size="icon"
                   variant="outline"
                   onClick={() => toggle(product)}
-                  className={`h-12 w-12 rounded-full border-gold/40 ${
-                    wishlisted ? "bg-rosemist" : ""
-                  }`}
+                  className={`h-12 w-12 rounded-full border-gold/40 ${wishlisted ? "bg-rosemist" : ""}`}
                 >
-                  <Heart
-                    className={`w-5 h-5 ${
-                      wishlisted
-                        ? "fill-espresso text-espresso"
-                        : "text-espresso"
-                    }`}
-                  />
+                  <Heart className={`w-5 h-5 ${wishlisted ? "fill-espresso text-espresso" : "text-espresso"}`} />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => {
+                    if (!isComparing(product.id) && isFull) { toast("Max 3 products in compare"); return; }
+                    toggleCompare(product);
+                    toast(isComparing(product.id) ? "Removed from compare" : "Added to compare — see bar below");
+                  }}
+                  title={isComparing(product.id) ? "Remove from compare" : "Compare this product"}
+                  className={`h-12 w-12 rounded-full border-gold/40 ${isComparing(product.id) ? "bg-espresso text-ivory border-espresso" : ""}`}
+                >
+                  <GitCompareArrows className={`w-5 h-5 ${isComparing(product.id) ? "text-ivory" : "text-espresso"}`} />
                 </Button>
               </div>
 
