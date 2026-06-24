@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.proxy
-    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/proxy:latest
+    image: ${IMAGE_PREFIX:-ghcr.io/alitheone007/ziyanisa}/proxy:latest
     container_name: ziyanisa-proxy
     restart: unless-stopped
     labels:
@@ -23,7 +23,7 @@ services:
   # ── FastAPI backend ───────────────────────────────────────────────────────────
   backend:
     build: ./backend
-    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/backend:latest
+    image: ${IMAGE_PREFIX:-ghcr.io/alitheone007/ziyanisa}/backend:latest
     container_name: ziyanisa-backend
     restart: unless-stopped
     env_file: .env
@@ -47,7 +47,7 @@ services:
   # API docs: http://localhost:8001/docs
   router:
     build: ./router
-    image: ghcr.io/${GITHUB_REPOSITORY:-ziyanisa/ziyanisa}/router:latest
+    image: ${IMAGE_PREFIX:-ghcr.io/alitheone007/ziyanisa}/router:latest
     container_name: bilion-router
     restart: unless-stopped
     env_file: .env
