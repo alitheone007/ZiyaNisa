@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Sparkles, ArrowRight, Play } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { HERO_FLOATERS } from "@/data/seed";
 
@@ -13,6 +14,7 @@ const positions = [
 ];
 
 export default function Hero() {
+  const navigate = useNavigate();
   return (
     <section
       data-testid="hero"
@@ -69,6 +71,7 @@ export default function Hero() {
             <Button
               data-testid="hero-shop-cta"
               size="lg"
+              onClick={() => navigate("/shop")}
               className="rounded-full px-8 h-12 bg-espresso text-ivory hover:bg-espresso/90 shadow-goldGlow hover:shadow-goldGlowHover font-medium tracking-wide"
             >
               Shop Beauty <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -77,6 +80,7 @@ export default function Hero() {
               data-testid="hero-book-cta"
               size="lg"
               variant="outline"
+              onClick={() => navigate("/services")}
               className="rounded-full px-8 h-12 border-gold/50 text-espresso hover:bg-rosemist hover:text-espresso bg-pearl/60 backdrop-blur"
             >
               <Play className="w-4 h-4 mr-1.5 fill-gold text-gold" />

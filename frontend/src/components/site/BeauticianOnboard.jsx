@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Sparkles, IndianRupee, CalendarCheck, ShieldCheck, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 const PERKS = [
@@ -9,6 +10,7 @@ const PERKS = [
 ];
 
 export default function BeauticianOnboard() {
+  const navigate = useNavigate();
   return (
     <section data-testid="beautician-onboard" className="py-20 md:py-28 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-5 md:px-10">
@@ -44,6 +46,7 @@ export default function BeauticianOnboard() {
                 <Button
                   data-testid="beautician-apply"
                   size="lg"
+                  onClick={() => navigate("/duty")}
                   className="rounded-full bg-gold text-espresso hover:bg-champagne h-12 px-7 font-medium shadow-goldGlow"
                 >
                   Apply as Beautician <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -52,6 +55,7 @@ export default function BeauticianOnboard() {
                   data-testid="beautician-learn"
                   size="lg"
                   variant="outline"
+                  onClick={() => document.getElementById("beautician-perks")?.scrollIntoView({ behavior: "smooth" })}
                   className="rounded-full h-12 px-7 border-champagne/30 bg-transparent text-ivory hover:bg-pearl/10 hover:text-ivory"
                 >
                   How it works

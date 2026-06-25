@@ -4,11 +4,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 
 const TABS = [
-  { id: "home", label: "Home", Icon: Home, href: "/" },
-  { id: "shop", label: "Shop", Icon: Search, href: "/shop" },
-  { id: "book", label: "Book", Icon: Calendar, href: "#services" },
-  { id: "wishlist", label: "Saved", Icon: Heart, href: "/wishlist" },
-  { id: "account", label: "Me", Icon: User, href: "/login" },
+  { id: "home",     label: "Home",  Icon: Home,     href: "/" },
+  { id: "shop",     label: "Shop",  Icon: Search,   href: "/shop" },
+  { id: "book",     label: "Book",  Icon: Calendar, href: "/services" },
+  { id: "wishlist", label: "Saved", Icon: Heart,    href: "/wishlist" },
+  { id: "account",  label: "Me",    Icon: User,     href: "/account" },
 ];
 
 export default function MobileBottomNav() {
@@ -18,16 +18,16 @@ export default function MobileBottomNav() {
 
   const isActive = (href) => {
     if (href === "/") return location.pathname === "/";
-    return location.pathname.startsWith(href) && href !== "#services";
+    return location.pathname.startsWith(href);
   };
 
   return (
     <>
-      {/* Floating cart FAB */}
+      {/* Floating cart FAB — sits above bottom nav, below WhatsApp */}
       <button
         data-testid="floating-cart"
         onClick={() => navigate("/cart")}
-        className="lg:hidden fixed right-4 bottom-24 z-40 w-14 h-14 rounded-full bg-espresso text-ivory shadow-cardLift grid place-items-center hover:bg-espresso/90 transition"
+        className="lg:hidden fixed right-4 bottom-[4.5rem] z-40 w-14 h-14 rounded-full bg-espresso text-ivory shadow-cardLift grid place-items-center hover:bg-espresso/90 transition"
         aria-label="Open cart"
       >
         <ShoppingBag className="w-5 h-5" />
@@ -45,14 +45,10 @@ export default function MobileBottomNav() {
         <div className="grid grid-cols-5 h-16">
           {TABS.map((t) => {
             const active = isActive(t.href);
-            const isAnchor = t.href.startsWith("#");
-            const Wrapper = isAnchor ? "a" : Link;
-            const linkProps = isAnchor ? { href: t.href } : { to: t.href };
-
             return (
-              <Wrapper
+              <Link
                 key={t.id}
-                {...linkProps}
+                to={t.href}
                 data-testid={`bnav-${t.id}`}
                 className="relative flex flex-col items-center justify-center gap-1 text-[10px] uppercase tracking-[0.15em]"
               >
@@ -65,7 +61,7 @@ export default function MobileBottomNav() {
                 )}
                 <t.Icon className={`w-5 h-5 ${active ? "text-espresso" : "text-taupe"}`} />
                 <span className={active ? "text-espresso" : "text-taupe"}>{t.label}</span>
-              </Wrapper>
+              </Link>
             );
           })}
         </div>

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Clock, Star, ArrowRight, MapPin, BadgeCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { SERVICES } from "@/data/seed";
 import { SectionHead } from "./CategoryGrid";
@@ -11,6 +12,7 @@ const LEVEL_COLOR = {
 };
 
 export default function ServiceTeaser() {
+  const navigate = useNavigate();
   return (
     <section id="services" data-testid="services-teaser" className="py-20 md:py-28 bg-rosemist/40 relative overflow-hidden">
       <div className="absolute -top-32 -right-32 w-96 h-96 bg-peach/30 rounded-full blur-3xl pointer-events-none" />
@@ -29,7 +31,7 @@ export default function ServiceTeaser() {
 
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
           {SERVICES.map((s, i) => (
-            <ServiceCard key={s.id} s={s} delay={(i % 4) * 0.07} />
+            <ServiceCard key={s.id} s={s} delay={(i % 4) * 0.07} onBook={() => navigate(`/book/${s.id}`)} />
           ))}
         </div>
 
@@ -37,6 +39,7 @@ export default function ServiceTeaser() {
           <Button
             data-testid="see-all-services"
             variant="outline"
+            onClick={() => navigate("/services")}
             className="rounded-full px-7 h-11 border-gold/50 hover:bg-pearl text-espresso bg-pearl/70"
           >
             See all home services <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -47,7 +50,7 @@ export default function ServiceTeaser() {
   );
 }
 
-function ServiceCard({ s, delay }) {
+function ServiceCard({ s, delay, onBook }) {
   return (
     <motion.article
       initial={{ opacity: 0, y: 22 }}
@@ -89,6 +92,7 @@ function ServiceCard({ s, delay }) {
           </div>
           <Button
             data-testid={`book-${s.id}`}
+            onClick={onBook}
             className="rounded-full bg-peach text-espresso hover:bg-peach/80 h-9 px-4 text-xs font-medium shadow-soft"
           >
             Book at Home
