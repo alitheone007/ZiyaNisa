@@ -44,7 +44,8 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
-ADMIN_PHONE   = os.environ.get("ADMIN_PHONE", "")  # e.g. "918341372666"
+ADMIN_PHONE   = os.environ.get("ADMIN_PHONE", "")   # e.g. "8341372666"
+ADMIN_EMAIL   = os.environ.get("ADMIN_EMAIL", "")   # e.g. "bilionsales@gmail.com"
 OLLAMA_HOST   = os.environ.get("OLLAMA_HOST",  "http://localhost:11434")
 VISION_MODEL  = os.environ.get("VISION_MODEL", "moondream")
 
@@ -73,6 +74,8 @@ def normalize_phone(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
 
 def is_admin_contact(contact: str) -> bool:
+    if ADMIN_EMAIL and contact.strip().lower() == ADMIN_EMAIL.strip().lower():
+        return True
     if not ADMIN_PHONE:
         return False
     return normalize_phone(contact)[-10:] == normalize_phone(ADMIN_PHONE)[-10:]
