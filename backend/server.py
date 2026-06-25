@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
+import asyncio
 import uuid
 import math
 import io
@@ -20,7 +21,7 @@ import base64
 import json as _json
 import httpx
 from datetime import datetime, timezone, timedelta
-from otp_sender import deliver_otp
+from otp_sender import deliver_otp, deliver_notification
 
 try:
     from PIL import Image, ExifTags
@@ -943,6 +944,26 @@ async def admin_update_order_status(
     result = await db.orders.update_one({"id": order_id}, {"$set": {"status": status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if status in ("dispatched", "delivered"):
+        order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+        if order and order.get("user_id"):
+            user = await db.users.find_one({"id": order["user_id"]}, {"_id": 0})
+            if user and user.get("contact"):
+                short_id = order_id[:8].upper()
+                if status == "dispatched":
+                    tracking = order.get("tracking_url", "")
+                    plain = (f"Your ZiyaNisa order #{short_id} has been dispatched!\n"
+                             + (f"Track here: {tracking}" if tracking else "You'll receive it soon."))
+                else:
+                    plain = f"Your ZiyaNisa order #{short_id} has been delivered. We hope you love it! Thank you for shopping with us."
+                html = f"""<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+  <h2 style="color:#2C1A0E">ZiyaNisa</h2>
+  <p style="color:#333">{plain.replace(chr(10), '<br>')}</p>
+</div>"""
+                subject = f"Order #{short_id} {'Dispatched' if status == 'dispatched' else 'Delivered'} — ZiyaNisa"
+                asyncio.create_task(deliver_notification(user["contact"], subject, plain, html))
+
     return {"id": order_id, "status": status}
 
 @api_router.get("/admin/bookings")
@@ -974,6 +995,24 @@ async def admin_update_booking_status(
     result = await db.bookings.update_one({"id": booking_id}, {"$set": {"status": status}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Booking not found")
+
+    if status in ("in_progress", "completed"):
+        booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+        if booking and booking.get("user_id"):
+            user = await db.users.find_one({"id": booking["user_id"]}, {"_id": 0})
+            if user and user.get("contact"):
+                svc = booking.get("service_name", "your appointment")
+                if status == "in_progress":
+                    plain = f"Your {svc} has started! Your ZiyaNisa beautician is with you."
+                else:
+                    plain = f"Your {svc} is complete. We hope you had a wonderful experience! Open the ZiyaNisa app to rate your beautician."
+                html = f"""<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+  <h2 style="color:#2C1A0E">ZiyaNisa</h2>
+  <p style="color:#333">{plain}</p>
+</div>"""
+                subject = f"{'Appointment Started' if status == 'in_progress' else 'Appointment Complete'} — ZiyaNisa"
+                asyncio.create_task(deliver_notification(user["contact"], subject, plain, html))
+
     return {"id": booking_id, "status": status}
 
 
@@ -1106,6 +1145,20 @@ async def set_tracking(order_id: str, body: dict, authorization: Optional[str] =
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if order and order.get("user_id"):
+        user = await db.users.find_one({"id": order["user_id"]}, {"_id": 0})
+        if user and user.get("contact"):
+            short_id = order_id[:8].upper()
+            plain = f"Your ZiyaNisa order #{short_id} has been dispatched! Track here: {tracking_url}"
+            html = f"""<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px">
+  <h2 style="color:#2C1A0E">ZiyaNisa</h2>
+  <p style="color:#333">{plain}</p>
+  <a href="{tracking_url}" style="display:inline-block;margin-top:12px;padding:10px 20px;background:#C6A84B;color:#fff;border-radius:8px;text-decoration:none">Track Order</a>
+</div>"""
+            asyncio.create_task(deliver_notification(user["contact"], f"Order #{short_id} Dispatched — ZiyaNisa", plain, html))
+
     return {"id": order_id, "tracking_url": tracking_url}
 
 
@@ -1377,7 +1430,13 @@ class Booking(BaseModel):
     beautician_id: Optional[str] = None
     beautician_name: Optional[str] = None
     expansion_ring: Optional[int] = None
+    rating: Optional[int] = None
+    rating_comment: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookingRating(BaseModel):
+    rating: int       # 1–5
+    comment: str = ""
 
 class BookingCreate(BaseModel):
     service_id: str
@@ -1412,6 +1471,39 @@ async def my_bookings(authorization: Optional[str] = Header(None)):
     user_id = claims["sub"]
     docs = await db.bookings.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return docs
+
+
+@api_router.patch("/bookings/{booking_id}/rate")
+async def rate_booking(booking_id: str, payload: BookingRating, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not (1 <= payload.rating <= 5):
+        raise HTTPException(status_code=400, detail="Rating must be 1–5")
+    booking = await db.bookings.find_one({"id": booking_id, "user_id": claims["sub"]}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Can only rate completed bookings")
+    if booking.get("rating") is not None:
+        raise HTTPException(status_code=409, detail="Already rated")
+
+    await db.bookings.update_one(
+        {"id": booking_id},
+        {"$set": {"rating": payload.rating, "rating_comment": payload.comment.strip()}},
+    )
+
+    if booking.get("beautician_id"):
+        b_doc = await db.beauticians.find_one({"id": booking["beautician_id"]}, {"_id": 0})
+        if b_doc:
+            old_rating = float(b_doc.get("rating") or 4.5)
+            old_count  = int(b_doc.get("rating_count") or 10)
+            new_count  = old_count + 1
+            new_avg    = round((old_rating * old_count + payload.rating) / new_count, 2)
+            await db.beauticians.update_one(
+                {"id": booking["beautician_id"]},
+                {"$set": {"rating": new_avg, "rating_count": new_count}},
+            )
+
+    return {"id": booking_id, "rating": payload.rating}
 
 
 class ChatQueryInput(BaseModel):

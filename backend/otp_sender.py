@@ -177,6 +177,51 @@ async def send_whatsapp_otp(phone: str, otp: str) -> bool:
         return False
 
 
+# ── General notification (non-OTP) ───────────────────────────────────────────
+
+def _smtp_notify_sync(to_email: str, subject: str, plain: str, html: str) -> bool:
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = SMTP_FROM
+        msg["To"]      = to_email
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as s:
+            s.ehlo(); s.starttls(); s.login(SMTP_USER, SMTP_PASS)
+            s.sendmail(SMTP_FROM, [to_email], msg.as_string())
+        return True
+    except Exception as exc:
+        log.error("Email notification failed to %s: %s", to_email, exc)
+        return False
+
+
+async def send_email_notification(to_email: str, subject: str, plain: str, html: str) -> bool:
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
+        return False
+    return await asyncio.to_thread(_smtp_notify_sync, to_email, subject, plain, html)
+
+
+async def send_whatsapp_notification(phone: str, message: str) -> bool:
+    if not N8N_OTP_WEBHOOK:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.post(N8N_OTP_WEBHOOK, json={"phone": phone, "message": message, "brand": BRAND})
+            return r.status_code < 300
+    except Exception as exc:
+        log.error("WhatsApp notification failed: %s", exc)
+        return False
+
+
+async def deliver_notification(contact: str, subject: str, plain: str, html: str) -> None:
+    """Fire-and-forget notification (order/booking status updates). Non-blocking."""
+    if "@" in contact:
+        await send_email_notification(contact, subject, plain, html)
+    else:
+        await send_whatsapp_notification(contact, plain)
+
+
 # ── Unified entry point ────────────────────────────────────────────────────────
 
 async def deliver_otp(contact: str, otp: str) -> dict[str, bool]:

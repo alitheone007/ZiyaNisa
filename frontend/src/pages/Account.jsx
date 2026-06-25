@@ -76,6 +76,16 @@ export default function Account() {
     onSuccess: () => qc.invalidateQueries(["addresses"]),
   });
 
+  const [pendingRatings, setPendingRatings] = useState({});
+  const rateBooking = useMutation({
+    mutationFn: ({ id, rating, comment }) => api.patch(`/bookings/${id}/rate`, { rating, comment }),
+    onSuccess: () => {
+      toast.success("Thank you for your feedback!");
+      qc.invalidateQueries(["bookings-mine"]);
+    },
+    onError: err => toast.error(err?.response?.data?.detail || "Could not submit rating"),
+  });
+
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
@@ -281,6 +291,46 @@ export default function Account() {
                         <p className="text-[11px] text-taupe mt-2 pt-2 border-t border-gold/10">
                           {b.address.full_name} · {b.address.line1}, {b.address.city} — {b.address.pin}
                         </p>
+                      )}
+                      {b.status === "completed" && (
+                        <div className="mt-3 pt-3 border-t border-gold/10">
+                          {b.rating ? (
+                            <p className="text-xs text-taupe flex items-center gap-1">
+                              <Star className="w-3.5 h-3.5 fill-gold text-gold" />
+                              You rated this {b.rating}/5
+                            </p>
+                          ) : (
+                            <div>
+                              <p className="text-xs text-taupe mb-2">Rate your experience</p>
+                              <div className="flex items-center gap-1 mb-2">
+                                {[1,2,3,4,5].map(n => (
+                                  <button key={n} onClick={() => setPendingRatings(p => ({ ...p, [b.id]: { ...p[b.id], star: n } }))}
+                                    className="focus:outline-none">
+                                    <Star className={`w-6 h-6 transition-colors ${
+                                      (pendingRatings[b.id]?.star || 0) >= n ? "fill-gold text-gold" : "text-stone-300"}`} />
+                                  </button>
+                                ))}
+                              </div>
+                              {pendingRatings[b.id]?.star > 0 && (
+                                <div className="flex gap-2 mt-1">
+                                  <input
+                                    type="text"
+                                    placeholder="Optional comment…"
+                                    value={pendingRatings[b.id]?.comment || ""}
+                                    onChange={e => setPendingRatings(p => ({ ...p, [b.id]: { ...p[b.id], comment: e.target.value } }))}
+                                    className="flex-1 text-xs border border-gold/30 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-gold bg-ivory"
+                                  />
+                                  <button
+                                    onClick={() => rateBooking.mutate({ id: b.id, rating: pendingRatings[b.id].star, comment: pendingRatings[b.id].comment || "" })}
+                                    disabled={rateBooking.isPending}
+                                    className="text-xs bg-espresso text-ivory px-3 py-1.5 rounded-lg disabled:opacity-50">
+                                    Submit
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </motion.div>
                   ))}
