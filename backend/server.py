@@ -20,6 +20,7 @@ import base64
 import json as _json
 import httpx
 from datetime import datetime, timezone, timedelta
+from otp_sender import deliver_otp
 
 try:
     from PIL import Image, ExifTags
@@ -575,11 +576,16 @@ async def send_otp(payload: SendOtpInput):
         raise HTTPException(status_code=400, detail="Contact (email or phone) is required")
     otp = str(random.randint(100000, 999999))
     OTP_STORE[contact] = {"otp": otp, "expires": datetime.now(timezone.utc) + timedelta(minutes=10)}
-    # Production: send otp via email/SMS here. Dev: return in response.
-    resp = {"message": "OTP sent successfully", "expires_in": 600}
+
     if DEV_MODE:
-        resp["dev_otp"] = otp
-    return resp
+        return {"message": "OTP sent (dev mode)", "dev_otp": otp, "expires_in": 600}
+
+    results = await deliver_otp(contact, otp)
+    if not any(results.values()):
+        logging.warning("All OTP channels failed for %s: %s", contact, results)
+        raise HTTPException(status_code=502, detail="Could not send OTP. Check your contact or try again later.")
+
+    return {"message": "OTP sent", "expires_in": 600}
 
 @api_router.post("/auth/verify-otp", response_model=TokenOut)
 async def verify_otp(payload: VerifyOtpInput):
