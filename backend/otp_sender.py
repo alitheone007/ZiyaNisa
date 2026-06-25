@@ -28,9 +28,10 @@ SMTP_PASS  = os.environ.get("SMTP_PASS", "")
 SMTP_FROM  = os.environ.get("SMTP_FROM", "") or SMTP_USER
 
 # ── SMS ───────────────────────────────────────────────────────────────────────
-SMS_PROVIDER  = os.environ.get("SMS_PROVIDER", "fast2sms")
-SMS_API_KEY   = os.environ.get("SMS_API_KEY", "")
-SMS_SENDER_ID = os.environ.get("SMS_SENDER_ID", "ZIYANA")
+SMS_PROVIDER          = os.environ.get("SMS_PROVIDER", "fast2sms")
+SMS_API_KEY           = os.environ.get("SMS_API_KEY", "")
+SMS_SENDER_ID         = os.environ.get("SMS_SENDER_ID", "ZIYANA")
+FAST2SMS_OTP_TEMPLATE = os.environ.get("FAST2SMS_OTP_TEMPLATE", "")  # OTP template ID from Fast2SMS dashboard
 
 # ── WhatsApp (optional, via n8n) ──────────────────────────────────────────────
 N8N_OTP_WEBHOOK = os.environ.get("N8N_OTP_WEBHOOK", "")
@@ -94,21 +95,30 @@ async def send_sms_otp(phone: str, otp: str) -> bool:
         async with httpx.AsyncClient(timeout=10) as client:
 
             if SMS_PROVIDER == "fast2sms":
-                # fast2sms.com — ₹0.10–0.30/msg, free credits on signup
+                # fast2sms.com — new OTP endpoint (POST /dev/otp/send)
+                # Requires otp_id = OTP template ID from Fast2SMS dashboard
+                if not FAST2SMS_OTP_TEMPLATE:
+                    log.warning("FAST2SMS_OTP_TEMPLATE not set — skipping SMS OTP")
+                    return False
+                payload: dict = {
+                    "mobile": digits,
+                    "otp_id": FAST2SMS_OTP_TEMPLATE,
+                    "otp": otp,
+                    "otp_expiry": 10,
+                }
                 r = await client.post(
-                    "https://www.fast2sms.com/dev/bulkV2",
-                    headers={"authorization": SMS_API_KEY, "Cache-Control": "no-cache"},
-                    json={
-                        "route": "otp",
-                        "variables_values": otp,
-                        "numbers": digits,
-                        "flash": 0,
+                    "https://www.fast2sms.com/dev/otp/send",
+                    headers={
+                        "authorization": SMS_API_KEY,
+                        "accept": "application/json",
+                        "content-type": "application/json",
                     },
+                    json=payload,
                 )
                 data = r.json()
-                ok = data.get("return", False)
+                ok = r.status_code == 200 and data.get("return", False)
                 if not ok:
-                    log.error("fast2sms error: %s", data)
+                    log.error("fast2sms OTP error: %s", data)
                 return ok
 
             elif SMS_PROVIDER == "2factor":
