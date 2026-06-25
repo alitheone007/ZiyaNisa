@@ -700,6 +700,15 @@ function BeauticiansTab() {
     onError: () => toast.error("Failed to remove"),
   });
 
+  const { mutate: toggleDuty, variables: dutyVar } = useMutation({
+    mutationFn: ({ id, on_duty }) => api.patch(`/admin/beauticians/${id}/duty`, { on_duty }),
+    onSuccess: (_, { on_duty }) => {
+      toast.success(on_duty ? "Marked On Duty" : "Marked Off Duty");
+      qc.invalidateQueries({ queryKey: ["admin-beauticians"] });
+    },
+    onError: () => toast.error("Failed to toggle duty"),
+  });
+
   function openEdit(b) {
     setEditId(b.id);
     setForm({
@@ -833,7 +842,8 @@ function BeauticiansTab() {
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Rating</th>
                 <th className="px-4 py-3">Skills</th>
-                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Active</th>
+                <th className="px-4 py-3">Duty</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -873,6 +883,16 @@ function BeauticiansTab() {
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${b.active !== false ? "bg-green-100 text-green-700" : "bg-stone-100 text-stone-500"}`}>
                         {b.active !== false ? "Active" : "Inactive"}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        disabled={dutyVar?.id === b.id}
+                        onClick={() => toggleDuty({ id: b.id, on_duty: b.on_duty === false })}
+                        className="flex items-center gap-1 text-xs disabled:opacity-50">
+                        {b.on_duty !== false
+                          ? <><ToggleRight className="w-5 h-5 text-blue-500" /><span className="text-blue-600">On Duty</span></>
+                          : <><ToggleLeft className="w-5 h-5 text-taupe" /><span className="text-taupe">Off Duty</span></>}
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">

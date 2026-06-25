@@ -1520,18 +1520,18 @@ HYD_AREA_COORDS: dict = {
 }
 
 BEAUTICIANS_SEED: List[dict] = [
-    {"id": "b-hyd-01", "name": "Priya Sharma",  "photo": "https://images.unsplash.com/photo-1494790108755-2616b332c41f?w=300&q=80", "phone": "9876543201", "lat": 17.4126, "lng": 78.4357, "area": "Banjara Hills",  "skills": ["s1","s2","s6","s4"], "rating": 4.9, "reviews_count": 142, "active": True},
-    {"id": "b-hyd-02", "name": "Ayesha Khan",   "photo": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300&q=80", "phone": "9876543202", "lat": 17.4239, "lng": 78.4072, "area": "Jubilee Hills",  "skills": ["s3","s8","s1"],     "rating": 4.8, "reviews_count":  98, "active": True},
-    {"id": "b-hyd-03", "name": "Sneha Reddy",   "photo": "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=300&q=80", "phone": "9876543203", "lat": 17.4481, "lng": 78.3915, "area": "Madhapur",       "skills": ["s2","s5","s7","s4"], "rating": 4.7, "reviews_count": 203, "active": True},
-    {"id": "b-hyd-04", "name": "Kavya Nair",    "photo": "https://images.unsplash.com/photo-1534751516642-a1af1ef26a56?w=300&q=80", "phone": "9876543204", "lat": 17.4435, "lng": 78.3772, "area": "Hitech City",    "skills": ["s1","s6","s2"],     "rating": 4.6, "reviews_count":  67, "active": True},
-    {"id": "b-hyd-05", "name": "Divya Menon",   "photo": "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=300&q=80", "phone": "9876543205", "lat": 17.4270, "lng": 78.4441, "area": "Panjagutta",     "skills": ["s3","s8","s1","s2"],"rating": 4.9, "reviews_count": 311, "active": True},
-    {"id": "b-hyd-06", "name": "Fatima Begum",  "photo": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&q=80", "phone": "9876543206", "lat": 17.4375, "lng": 78.4483, "area": "Ameerpet",       "skills": ["s4","s5","s6","s7"], "rating": 4.7, "reviews_count": 156, "active": True},
-    {"id": "b-hyd-07", "name": "Rekha Singh",   "photo": "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=300&q=80", "phone": "9876543207", "lat": 17.4082, "lng": 78.3979, "area": "Film Nagar",     "skills": ["s1","s2","s3","s8"], "rating": 4.8, "reviews_count":  89, "active": True},
-    {"id": "b-hyd-08", "name": "Sania Mirza",   "photo": "https://images.unsplash.com/photo-1569124589354-615739ae007b?w=300&q=80", "phone": "9876543208", "lat": 17.4401, "lng": 78.3489, "area": "Gachibowli",    "skills": ["s5","s6","s7","s4"], "rating": 4.5, "reviews_count":  44, "active": True},
-    {"id": "b-hyd-09", "name": "Sunita Rao",    "photo": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&q=80", "phone": "9876543209", "lat": 17.4600, "lng": 78.3600, "area": "Kondapur",       "skills": ["s1","s2","s5"],     "rating": 4.7, "reviews_count":  72, "active": True},
-    {"id": "b-hyd-10", "name": "Ananya Patel",  "photo": "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=300&q=80", "phone": "9876543210", "lat": 17.3961, "lng": 78.4677, "area": "Masab Tank",     "skills": ["s3","s8","s6"],     "rating": 4.6, "reviews_count": 115, "active": True},
-    {"id": "b-hyd-11", "name": "Lakshmi Devi",  "photo": "https://images.unsplash.com/photo-1566616213894-2d4e1baee5d8?w=300&q=80", "phone": "9876543211", "lat": 17.4281, "lng": 78.4618, "area": "Somajiguda",    "skills": ["s1","s4","s6","s7"], "rating": 4.8, "reviews_count":  63, "active": True},
-    {"id": "b-hyd-12", "name": "Meera Joshi",   "photo": "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=300&q=80", "phone": "9876543212", "lat": 17.4842, "lng": 78.4002, "area": "Kukatpally",    "skills": ["s2","s5","s7"],     "rating": 4.5, "reviews_count":  38, "active": True},
+    {"id": "b-hyd-01", "name": "Priya Sharma",  "photo": "https://images.unsplash.com/photo-1494790108755-2616b332c41f?w=300&q=80", "phone": "9876543201", "lat": 17.4126, "lng": 78.4357, "area": "Banjara Hills",  "skills": ["s1","s2","s6","s4"], "rating": 4.9, "reviews_count": 142, "active": True, "on_duty": True},
+    {"id": "b-hyd-02", "name": "Ayesha Khan",   "photo": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300&q=80", "phone": "9876543202", "lat": 17.4239, "lng": 78.4072, "area": "Jubilee Hills",  "skills": ["s3","s8","s1"],     "rating": 4.8, "reviews_count":  98, "active": True, "on_duty": True},
+    {"id": "b-hyd-03", "name": "Sneha Reddy",   "photo": "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=300&q=80", "phone": "9876543203", "lat": 17.4481, "lng": 78.3915, "area": "Madhapur",       "skills": ["s2","s5","s7","s4"], "rating": 4.7, "reviews_count": 203, "active": True, "on_duty": True},
+    {"id": "b-hyd-04", "name": "Kavya Nair",    "photo": "https://images.unsplash.com/photo-1534751516642-a1af1ef26a56?w=300&q=80", "phone": "9876543204", "lat": 17.4435, "lng": 78.3772, "area": "Hitech City",    "skills": ["s1","s6","s2"],     "rating": 4.6, "reviews_count":  67, "active": True, "on_duty": True},
+    {"id": "b-hyd-05", "name": "Divya Menon",   "photo": "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=300&q=80", "phone": "9876543205", "lat": 17.4270, "lng": 78.4441, "area": "Panjagutta",     "skills": ["s3","s8","s1","s2"],"rating": 4.9, "reviews_count": 311, "active": True, "on_duty": True},
+    {"id": "b-hyd-06", "name": "Fatima Begum",  "photo": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&q=80", "phone": "9876543206", "lat": 17.4375, "lng": 78.4483, "area": "Ameerpet",       "skills": ["s4","s5","s6","s7"], "rating": 4.7, "reviews_count": 156, "active": True, "on_duty": True},
+    {"id": "b-hyd-07", "name": "Rekha Singh",   "photo": "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=300&q=80", "phone": "9876543207", "lat": 17.4082, "lng": 78.3979, "area": "Film Nagar",     "skills": ["s1","s2","s3","s8"], "rating": 4.8, "reviews_count":  89, "active": True, "on_duty": True},
+    {"id": "b-hyd-08", "name": "Sania Mirza",   "photo": "https://images.unsplash.com/photo-1569124589354-615739ae007b?w=300&q=80", "phone": "9876543208", "lat": 17.4401, "lng": 78.3489, "area": "Gachibowli",    "skills": ["s5","s6","s7","s4"], "rating": 4.5, "reviews_count":  44, "active": True, "on_duty": True},
+    {"id": "b-hyd-09", "name": "Sunita Rao",    "photo": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&q=80", "phone": "9876543209", "lat": 17.4600, "lng": 78.3600, "area": "Kondapur",       "skills": ["s1","s2","s5"],     "rating": 4.7, "reviews_count":  72, "active": True, "on_duty": True},
+    {"id": "b-hyd-10", "name": "Ananya Patel",  "photo": "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=300&q=80", "phone": "9876543210", "lat": 17.3961, "lng": 78.4677, "area": "Masab Tank",     "skills": ["s3","s8","s6"],     "rating": 4.6, "reviews_count": 115, "active": True, "on_duty": True},
+    {"id": "b-hyd-11", "name": "Lakshmi Devi",  "photo": "https://images.unsplash.com/photo-1566616213894-2d4e1baee5d8?w=300&q=80", "phone": "9876543211", "lat": 17.4281, "lng": 78.4618, "area": "Somajiguda",    "skills": ["s1","s4","s6","s7"], "rating": 4.8, "reviews_count":  63, "active": True, "on_duty": True},
+    {"id": "b-hyd-12", "name": "Meera Joshi",   "photo": "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=300&q=80", "phone": "9876543212", "lat": 17.4842, "lng": 78.4002, "area": "Kukatpally",    "skills": ["s2","s5","s7"],     "rating": 4.5, "reviews_count":  38, "active": True, "on_duty": True},
 ]
 
 
@@ -1545,6 +1545,7 @@ class BeauticianCreate(BaseModel):
     skills: List[str]
     rating: float = 5.0
     active: bool = True
+    on_duty: bool = True
 
 class BeauticianSearchInput(BaseModel):
     service_id: str
@@ -1555,6 +1556,13 @@ class BeauticianSearchInput(BaseModel):
 
 class BookingStatusUpdate(BaseModel):
     status: str
+
+class DutyUpdate(BaseModel):
+    phone: str
+    on_duty: bool
+
+class AdminDutyUpdate(BaseModel):
+    on_duty: bool
 
 
 def _h3_cell(lat: float, lng: float) -> Optional[str]:
@@ -1577,7 +1585,7 @@ async def search_beauticians(payload: BeauticianSearchInput):
         for ring in range(0, 5):
             cells = list(_h3.k_ring(customer_cell, ring))
             beauticians = await db.beauticians.find(
-                {"h3_index": {"$in": cells}, "active": True}, {"_id": 0}
+                {"h3_index": {"$in": cells}, "active": True, "on_duty": {"$ne": False}}, {"_id": 0}
             ).to_list(100)
 
             available = []
@@ -1599,7 +1607,7 @@ async def search_beauticians(payload: BeauticianSearchInput):
                 return {"beauticians": available, "expansion_ring": ring, "zone_expanded": ring > 0}
     else:
         # Fallback: pure haversine within 20 km
-        beauticians = await db.beauticians.find({"active": True}, {"_id": 0}).to_list(200)
+        beauticians = await db.beauticians.find({"active": True, "on_duty": {"$ne": False}}, {"_id": 0}).to_list(200)
         available = []
         for b in beauticians:
             if payload.service_id not in b.get("skills", []):
@@ -1692,6 +1700,69 @@ async def admin_update_booking_status(bid: str, payload: BookingStatusUpdate, au
     return doc or {"id": bid, "status": payload.status}
 
 
+@api_router.patch("/admin/beauticians/{bid}/duty")
+async def admin_toggle_beautician_duty(bid: str, payload: AdminDutyUpdate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(403, "Admin only")
+    await db.beauticians.update_one({"id": bid}, {"$set": {"on_duty": payload.on_duty}})
+    return {"ok": True, "on_duty": payload.on_duty}
+
+
+# ── Beautician self-service duty portal ──────────────────────────────────────
+
+@api_router.get("/beauticians/profile")
+async def get_beautician_profile(phone: str):
+    """Phone-based lookup for beautician duty portal — no auth, read-only."""
+    clean = "".join(c for c in phone if c.isdigit())[-10:]
+    doc = await db.beauticians.find_one(
+        {"$expr": {"$eq": [{"$substrCP": ["$phone", {"$subtract": [{"$strLenCP": "$phone"}, 10]}, 10]}, clean]}},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "No beautician found with this phone number")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    bookings_today = await db.bookings.count_documents({
+        "beautician_id": doc.get("id"), "date": today, "status": {"$nin": ["cancelled"]},
+    })
+    return {**doc, "bookings_today": bookings_today}
+
+
+@api_router.patch("/beauticians/duty")
+async def toggle_beautician_duty(payload: DutyUpdate):
+    """Beautician self-toggles duty status using their registered phone."""
+    clean = "".join(c for c in payload.phone if c.isdigit())[-10:]
+    result = await db.beauticians.update_one(
+        {"$expr": {"$eq": [{"$substrCP": ["$phone", {"$subtract": [{"$strLenCP": "$phone"}, 10]}, 10]}, clean]}},
+        {"$set": {"on_duty": payload.on_duty}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "No beautician found with this phone number")
+    doc = await db.beauticians.find_one(
+        {"$expr": {"$eq": [{"$substrCP": ["$phone", {"$subtract": [{"$strLenCP": "$phone"}, 10]}, 10]}, clean]}},
+        {"_id": 0},
+    )
+    return doc
+
+
+@api_router.get("/beauticians/surge-zones")
+async def get_surge_zones():
+    """Return areas with ≤1 on-duty beautician — surge earning opportunity for off-duty ones."""
+    pipeline = [
+        {"$match": {"active": True}},
+        {"$group": {
+            "_id": "$area",
+            "on_duty_count": {"$sum": {"$cond": [{"$ne": ["$on_duty", False]}, 1, 0]}},
+            "total": {"$sum": 1},
+        }},
+        {"$match": {"on_duty_count": {"$lte": 1}}},
+        {"$project": {"area": "$_id", "on_duty_count": 1, "total": 1, "_id": 0}},
+        {"$sort": {"on_duty_count": 1}},
+    ]
+    zones = await db.beauticians.aggregate(pipeline).to_list(50)
+    return zones
+
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 app.include_router(api_router)
@@ -1741,6 +1812,8 @@ async def create_indexes():
     await db.beauticians.create_index([("h3_index", 1)])
     await db.beauticians.create_index([("area", 1)])
     await db.beauticians.create_index([("active", 1)])
+    await db.beauticians.create_index([("on_duty", 1)])
+    await db.beauticians.create_index([("phone", 1)])
     if await db.beauticians.count_documents({}) == 0:
         seeded_b = []
         for b in BEAUTICIANS_SEED:
