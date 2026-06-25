@@ -1,23 +1,49 @@
 import { Instagram, Facebook, Youtube, Send } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const COLS = [
   {
     title: "Shop",
-    items: ["Skincare", "Haircare", "Makeup", "Fragrance & Ittar", "Jewellery", "Handbags"],
+    items: [
+      { label: "Skincare",          href: "/shop/skincare" },
+      { label: "Haircare",          href: "/shop/haircare" },
+      { label: "Makeup",            href: "/shop/makeup" },
+      { label: "Fragrance & Ittar", href: "/shop/fragrance" },
+      { label: "Jewellery",         href: "/shop/jewellery" },
+      { label: "Handbags",          href: "/shop/handbags" },
+    ],
   },
   {
     title: "Home Salon",
-    items: ["Facials & Cleanup", "Bridal Makeup", "Hair Spa", "Manicure & Pedicure", "Waxing", "Men's Grooming"],
+    items: [
+      { label: "Facials & Cleanup",    href: "/services" },
+      { label: "Bridal Makeup",        href: "/services" },
+      { label: "Hair Spa",             href: "/services" },
+      { label: "Manicure & Pedicure",  href: "/services" },
+      { label: "Waxing",               href: "/services" },
+      { label: "Men's Grooming",       href: "/services" },
+    ],
   },
   {
     title: "Partner",
-    items: ["Become a Beautician", "Sell on ZiyaNisa", "Brand Partnerships", "Affiliate Program"],
+    items: [
+      { label: "Become a Beautician",  href: "/beautician/apply" },
+      { label: "Sell on ZiyaNisa",     href: "#footer" },
+      { label: "Brand Partnerships",   href: "#footer" },
+      { label: "Affiliate Program",    href: "#footer" },
+    ],
   },
   {
     title: "Company",
-    items: ["About ZiyaNisa", "Clean Beauty Journal", "Press", "Careers", "Contact"],
+    items: [
+      { label: "About ZiyaNisa",       href: "#footer" },
+      { label: "Clean Beauty Journal", href: "#footer" },
+      { label: "Press",                href: "#footer" },
+      { label: "Careers",              href: "#footer" },
+      { label: "Contact",              href: "#footer" },
+    ],
   },
 ];
 
@@ -73,11 +99,17 @@ export default function Footer() {
               <div key={c.title}>
                 <div className="text-xs uppercase tracking-[0.25em] text-gold">{c.title}</div>
                 <ul className="mt-4 space-y-2">
-                  {c.items.map((i) => (
-                    <li key={i}>
-                      <a href="#footer" className="text-sm text-champagne/80 hover:text-ivory transition">
-                        {i}
-                      </a>
+                  {c.items.map(({ label, href }) => (
+                    <li key={label}>
+                      {href.startsWith("/") ? (
+                        <Link to={href} className="text-sm text-champagne/80 hover:text-ivory transition">
+                          {label}
+                        </Link>
+                      ) : (
+                        <a href={href} className="text-sm text-champagne/80 hover:text-ivory transition">
+                          {label}
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>
