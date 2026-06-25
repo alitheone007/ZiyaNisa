@@ -21,6 +21,7 @@ import Search      from "@/pages/Search";
 import SkinQuiz    from "@/pages/SkinQuiz";
 import Compare          from "@/pages/Compare";
 import BeauticianPortal from "@/pages/BeauticianPortal";
+import BeauticianApply  from "@/pages/BeauticianApply";
 import WhatsAppFloat from "@/components/site/WhatsAppFloat";
 import CompareBar    from "@/components/site/CompareBar";
 
@@ -49,7 +50,8 @@ function App() {
                   <Route path="/search"          element={<Search />} />
                   <Route path="/skin-quiz"       element={<SkinQuiz />} />
                   <Route path="/compare"         element={<Compare />} />
-                  <Route path="/duty"            element={<BeauticianPortal />} />
+                  <Route path="/duty"               element={<BeauticianPortal />} />
+                  <Route path="/beautician/apply"  element={<BeauticianApply />} />
                 </Routes>
                 <CompareBar />
               </BrowserRouter>

@@ -1666,6 +1666,29 @@ class AdminDutyUpdate(BaseModel):
     on_duty: bool
 
 
+class BeauticianApplication(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    phone: str
+    email: Optional[str] = None
+    area: str
+    lat: float = 0.0
+    lng: float = 0.0
+    experience_years: int = 0
+    skills: List[str] = []
+    selfie_b64: str
+    id_proof_b64: str
+    id_type: str = "aadhaar"
+    status: str = "pending_review"
+    rejection_reason: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ApplicationReview(BaseModel):
+    action: str  # "approve" | "reject"
+    rejection_reason: Optional[str] = None
+
+
 def _h3_cell(lat: float, lng: float) -> Optional[str]:
     if not _H3_OK:
         return None
@@ -1864,6 +1887,106 @@ async def get_surge_zones():
     return zones
 
 
+# ── Beautician KYC / application flow ─────────────────────────────────────────
+
+@api_router.post("/beauticians/apply", status_code=201)
+async def submit_beautician_application(payload: BeauticianApplication):
+    clean = "".join(c for c in payload.phone if c.isdigit())[-10:]
+    existing = await db.beautician_applications.find_one(
+        {"phone": {"$regex": clean + "$"}, "status": {"$in": ["pending_review", "approved"]}},
+    )
+    if existing:
+        raise HTTPException(409, "An active application already exists for this phone number")
+    doc = payload.dict()
+    doc["phone"] = clean
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.beautician_applications.insert_one(doc)
+    return {"ok": True, "id": doc["id"]}
+
+
+@api_router.get("/beauticians/application-status")
+async def get_beautician_application_status(phone: str):
+    clean = "".join(c for c in phone if c.isdigit())[-10:]
+    doc = await db.beautician_applications.find_one(
+        {"phone": {"$regex": clean + "$"}},
+        {"_id": 0, "selfie_b64": 0, "id_proof_b64": 0},
+        sort=[("created_at", -1)],
+    )
+    if not doc:
+        raise HTTPException(404, "No application found for this phone number")
+    return doc
+
+
+@api_router.get("/admin/beauticians/applications")
+async def admin_list_applications(
+    status: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(403, "Admin only")
+    filt = {}
+    if status:
+        filt["status"] = status
+    docs = await db.beautician_applications.find(filt, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return docs
+
+
+@api_router.patch("/admin/beauticians/applications/{app_id}/review")
+async def review_beautician_application(
+    app_id: str,
+    payload: ApplicationReview,
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(403, "Admin only")
+    if payload.action not in ("approve", "reject"):
+        raise HTTPException(400, "action must be 'approve' or 'reject'")
+    app_doc = await db.beautician_applications.find_one({"id": app_id}, {"_id": 0})
+    if not app_doc:
+        raise HTTPException(404, "Application not found")
+    if app_doc.get("status") != "pending_review":
+        raise HTTPException(409, f"Application is already {app_doc.get('status')}")
+
+    if payload.action == "approve":
+        beautician_doc = {
+            "id": str(uuid.uuid4()),
+            "name": app_doc["name"],
+            "phone": app_doc["phone"],
+            "photo": app_doc.get("selfie_b64", ""),
+            "lat": app_doc.get("lat", 17.3850),
+            "lng": app_doc.get("lng", 78.4867),
+            "area": app_doc["area"],
+            "skills": app_doc.get("skills", []),
+            "rating": 5.0,
+            "rating_count": 0,
+            "reviews_count": 0,
+            "active": True,
+            "on_duty": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        beautician_doc["h3_index"] = _h3_cell(beautician_doc["lat"], beautician_doc["lng"])
+        await db.beauticians.insert_one(beautician_doc)
+        await db.beautician_applications.update_one(
+            {"id": app_id},
+            {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"ok": True, "beautician_id": beautician_doc["id"]}
+    else:
+        if not payload.rejection_reason:
+            raise HTTPException(400, "rejection_reason is required when rejecting")
+        await db.beautician_applications.update_one(
+            {"id": app_id},
+            {"$set": {
+                "status": "rejected",
+                "rejection_reason": payload.rejection_reason,
+                "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return {"ok": True}
+
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 app.include_router(api_router)
@@ -1915,6 +2038,9 @@ async def create_indexes():
     await db.beauticians.create_index([("active", 1)])
     await db.beauticians.create_index([("on_duty", 1)])
     await db.beauticians.create_index([("phone", 1)])
+    await db.beautician_applications.create_index([("phone", 1)])
+    await db.beautician_applications.create_index([("status", 1)])
+    await db.beautician_applications.create_index([("created_at", -1)])
     if await db.beauticians.count_documents({}) == 0:
         seeded_b = []
         for b in BEAUTICIANS_SEED:

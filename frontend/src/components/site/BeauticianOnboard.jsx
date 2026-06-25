@@ -46,7 +46,7 @@ export default function BeauticianOnboard() {
                 <Button
                   data-testid="beautician-apply"
                   size="lg"
-                  onClick={() => navigate("/duty")}
+                  onClick={() => navigate("/beautician/apply")}
                   className="rounded-full bg-gold text-espresso hover:bg-champagne h-12 px-7 font-medium shadow-goldGlow"
                 >
                   Apply as Beautician <ArrowRight className="w-4 h-4 ml-1.5" />

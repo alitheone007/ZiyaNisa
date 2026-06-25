@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Scissors, Loader2, CheckCircle2, XCircle, TrendingUp,
   Phone, MapPin, Star, CalendarDays, Zap, ToggleLeft, ToggleRight,
+  ClipboardList, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 
 const SKILL_NAMES = {
@@ -14,8 +16,10 @@ const SKILL_NAMES = {
 };
 
 export default function BeauticianPortal() {
+  const navigate = useNavigate();
   const [phone, setPhone] = useState("");
   const [profile, setProfile] = useState(null);
+  const [application, setApplication] = useState(null); // null | {status, rejection_reason, ...}
   const [surgeZones, setSurgeZones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -31,12 +35,20 @@ export default function BeauticianPortal() {
         api.get("/beauticians/surge-zones"),
       ]);
       setProfile(profRes.data);
+      setApplication(null);
       setSurgeZones(surgeRes.data || []);
     } catch (err) {
-      if (err.response?.status === 404)
-        toast.error("No beautician registered with this number. Contact admin.");
-      else
+      if (err.response?.status === 404) {
+        // Check if they have a pending application
+        try {
+          const appRes = await api.get(`/beauticians/application-status?phone=${digits}`);
+          setApplication(appRes.data);
+        } catch {
+          setApplication({ status: "none" });
+        }
+      } else {
         toast.error("Could not fetch profile. Try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -77,8 +89,82 @@ export default function BeauticianPortal() {
       <div className="flex-1 px-5 pb-10 max-w-sm mx-auto w-full">
         <AnimatePresence mode="wait">
 
+          {/* Application status screens */}
+          {!profile && application && (
+            <motion.div key="app-status" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-10">
+              {application.status === "pending_review" && (
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-400/30 grid place-items-center mx-auto mb-5">
+                    <ClipboardList className="w-9 h-9 text-amber-400" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-white mb-2">Application Under Review</h2>
+                  <p className="text-sm text-white/50 mb-6 leading-relaxed">
+                    Our team is reviewing your documents. This usually takes 2–3 business days.
+                    We'll notify you once a decision is made.
+                  </p>
+                  <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 text-left text-xs text-amber-200/70 space-y-1.5">
+                    <p><strong className="text-amber-300">Name:</strong> {application.name}</p>
+                    <p><strong className="text-amber-300">Area:</strong> {application.area}</p>
+                    <p><strong className="text-amber-300">Status:</strong> Pending Review</p>
+                  </div>
+                  <button onClick={() => { setApplication(null); setPhone(""); }}
+                    className="mt-6 text-xs text-white/30 hover:text-white/50">
+                    ← Use a different number
+                  </button>
+                </div>
+              )}
+
+              {application.status === "rejected" && (
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-red-500/15 border border-red-400/30 grid place-items-center mx-auto mb-5">
+                    <AlertCircle className="w-9 h-9 text-red-400" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-white mb-2">Application Not Approved</h2>
+                  {application.rejection_reason && (
+                    <div className="bg-red-500/10 border border-red-400/20 rounded-2xl p-4 mb-5 text-left">
+                      <p className="text-xs text-red-300/70 uppercase tracking-widest mb-1">Reason</p>
+                      <p className="text-sm text-white/70">{application.rejection_reason}</p>
+                    </div>
+                  )}
+                  <p className="text-sm text-white/50 mb-6">
+                    You may re-apply with updated documents.
+                  </p>
+                  <Button onClick={() => navigate("/beautician/apply")}
+                    className="rounded-full bg-gold text-espresso font-semibold h-11 px-6 hover:bg-gold/90">
+                    Re-apply Now
+                  </Button>
+                  <button onClick={() => { setApplication(null); setPhone(""); }}
+                    className="mt-4 block mx-auto text-xs text-white/30 hover:text-white/50">
+                    ← Use a different number
+                  </button>
+                </div>
+              )}
+
+              {application.status === "none" && (
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-gold/10 border border-gold/20 grid place-items-center mx-auto mb-5">
+                    <Scissors className="w-9 h-9 text-gold" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-white mb-2">Not Registered Yet</h2>
+                  <p className="text-sm text-white/50 mb-6 leading-relaxed">
+                    No beautician account or application found for this number.
+                    Apply now to join ZiyaNisa's partner network.
+                  </p>
+                  <Button onClick={() => navigate("/beautician/apply")}
+                    className="rounded-full bg-gold text-espresso font-semibold h-11 px-7 hover:bg-gold/90 w-full">
+                    Apply as Beautician
+                  </Button>
+                  <button onClick={() => { setApplication(null); setPhone(""); }}
+                    className="mt-4 text-xs text-white/30 hover:text-white/50">
+                    ← Try a different number
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {/* Phone Entry */}
-          {!profile && (
+          {!profile && !application && (
             <motion.div key="lookup" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="mt-10 mb-8 text-center">
                 <div className="w-20 h-20 rounded-full bg-gold/10 border border-gold/20 grid place-items-center mx-auto mb-5">
