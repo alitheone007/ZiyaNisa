@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, Star, ArrowLeft, ChevronRight, CheckCircle2,
   MapPin, CalendarDays, Sparkles, Navigation, Loader2, User,
+  ShieldCheck, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
@@ -15,7 +16,6 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { SERVICES } from "@/data/seed";
 
-// Hyderabad service areas with approximate coordinates
 const HYD_AREAS = [
   { name: "Banjara Hills",  lat: 17.4126, lng: 78.4357 },
   { name: "Jubilee Hills",  lat: 17.4239, lng: 78.4072 },
@@ -43,14 +43,6 @@ const HYD_AREAS = [
   { name: "Nanakramguda",   lat: 17.4177, lng: 78.3560 },
 ];
 
-const INDIA_STATES = [
-  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
-  "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra",
-  "Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim",
-  "Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-  "Delhi","Jammu & Kashmir","Ladakh","Puducherry","Chandigarh",
-];
-
 const TIME_SLOTS = [
   "08:00 AM - 09:00 AM","09:00 AM - 10:00 AM","10:00 AM - 11:00 AM",
   "11:00 AM - 12:00 PM","12:00 PM - 01:00 PM","02:00 PM - 03:00 PM",
@@ -74,7 +66,7 @@ function getNextDays(n = 14) {
 export default function Book() {
   const { serviceId } = useParams();
   const navigate = useNavigate();
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, setAuth } = useAuth();
 
   const [step, setStep] = useState(0);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -88,13 +80,18 @@ export default function Book() {
   const [selectedBeautician, setSelectedBeautician] = useState(null);
   const [address, setAddress] = useState({
     full_name: user?.name || "",
-    phone: user?.contact?.replace("@","").match(/^\d/) ? user.contact : "",
+    phone: user?.contact?.replace("@", "").match(/^\d/) ? user.contact : "",
     line1: "", line2: "", city: "", state: "Telangana", pin: "",
   });
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [bookingId, setBookingId] = useState(null);
+
+  // OTP auto-login state (for unauthenticated users in confirm step)
+  const [otpPhase, setOtpPhase] = useState("idle"); // idle | sending | sent | verifying | verified
+  const [otpCode, setOtpCode] = useState("");
+  const [otpContact, setOtpContact] = useState(""); // the phone we sent OTP to
 
   const { data: services = SERVICES } = useQuery({
     queryKey: ["services"],
@@ -109,13 +106,11 @@ export default function Book() {
       setAddress(a => ({ ...a, full_name: user.name }));
   }, [user]);
 
-  // Pre-fill city when area is selected
   useEffect(() => {
     if (selectedArea)
       setAddress(a => ({ ...a, city: selectedArea.name }));
   }, [selectedArea]);
 
-  // Search beauticians when area + date + time are all set
   async function doSearch(area) {
     if (!area || !selectedDate || !selectedSlot) return;
     setSearchLoading(true);
@@ -135,6 +130,7 @@ export default function Book() {
       setSearchDone(true);
     } catch {
       toast.error("Could not search beauticians. Try again.");
+      setSearchDone(true);
     } finally {
       setSearchLoading(false);
     }
@@ -142,6 +138,8 @@ export default function Book() {
 
   function handleAreaSelect(area) {
     setSelectedArea(area);
+    setSearchDone(false);
+    setBeauticians([]);
     doSearch(area);
   }
 
@@ -154,7 +152,6 @@ export default function Book() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
-        // Find nearest named area
         let nearest = HYD_AREAS[0];
         let minDist = Infinity;
         for (const a of HYD_AREAS) {
@@ -167,11 +164,51 @@ export default function Book() {
         doSearch(gpsArea);
         toast.success(`Location detected: near ${nearest.name}`);
       },
-      (err) => {
+      () => {
         setGpsLoading(false);
         toast.error("Could not get your location. Please select your area.");
       },
     );
+  }
+
+  // OTP flow helpers
+  async function sendOtp(phone) {
+    const contact = phone.replace(/\D/g, "").slice(-10);
+    if (contact.length < 10) return;
+    setOtpPhase("sending");
+    setOtpContact(contact);
+    try {
+      // Check if account exists first — pre-fill name if so
+      try {
+        const { data: check } = await api.get(`/auth/check-contact?contact=${contact}`);
+        if (check.name && !address.full_name) {
+          setAddress(a => ({ ...a, full_name: check.name }));
+        }
+      } catch { /* ignore */ }
+      await api.post("/auth/send-otp", { contact });
+      setOtpPhase("sent");
+      toast.success("OTP sent to your mobile");
+    } catch {
+      setOtpPhase("idle");
+      toast.error("Failed to send OTP. Check the number and try again.");
+    }
+  }
+
+  async function verifyOtp() {
+    if (otpCode.length < 4) return;
+    setOtpPhase("verifying");
+    try {
+      const { data } = await api.post("/auth/verify-otp", { contact: otpContact, otp: otpCode });
+      setAuth(data);
+      if (data.user?.name && !address.full_name) {
+        setAddress(a => ({ ...a, full_name: data.user.name }));
+      }
+      setOtpPhase("verified");
+      toast.success("Verified! Continuing your booking…");
+    } catch (err) {
+      setOtpPhase("sent"); // back to OTP entry
+      toast.error(err.response?.data?.detail || "Incorrect OTP. Try again.");
+    }
   }
 
   if (!service) {
@@ -190,11 +227,22 @@ export default function Book() {
   }
 
   const days = getNextDays(14);
+  const noCoverage = searchDone && beauticians.length === 0 && selectedArea;
 
   function canProceed() {
-    if (step === 0) return selectedDate && selectedSlot;
-    if (step === 1) return !!selectedArea;
+    if (step === 0) return !!(selectedDate && selectedSlot);
+    if (step === 1) return !!(selectedArea) && !searchLoading && !noCoverage;
     if (step === 2) return !!selectedBeautician;
+    if (step === 3) {
+      const phone = address.phone.replace(/\D/g, "");
+      return !!(
+        address.full_name.trim() &&
+        phone.length >= 10 &&
+        address.line1.trim() &&
+        address.pin.replace(/\D/g, "").length === 6 &&
+        (isLoggedIn || otpPhase === "verified")
+      );
+    }
     return true;
   }
 
@@ -224,8 +272,7 @@ export default function Book() {
   }
 
   function handleNext() {
-    if (step === 1 && !searchDone && selectedArea)
-      doSearch(selectedArea);
+    if (step === 1 && !searchDone && selectedArea) doSearch(selectedArea);
     if (step < STEPS.length - 1) setStep(s => s + 1);
     else handleConfirm();
   }
@@ -275,11 +322,9 @@ export default function Book() {
               className="rounded-full border-gold/30 text-espresso px-6">
               Book Another
             </Button>
-            {isLoggedIn && (
-              <Button onClick={() => navigate("/account")} className="rounded-full bg-espresso text-ivory px-6">
-                My Bookings
-              </Button>
-            )}
+            <Button onClick={() => navigate("/account")} className="rounded-full bg-espresso text-ivory px-6">
+              My Bookings
+            </Button>
           </div>
         </main>
         <Footer /><MobileBottomNav />
@@ -377,20 +422,15 @@ export default function Book() {
                   <MapPin className="w-5 h-5 text-gold" /> Your Area in Hyderabad
                 </h2>
                 <p className="text-xs text-taupe mb-5">
-                  We'll find the nearest available beautician to you for{" "}
+                  We'll find the nearest available beautician for{" "}
                   <span className="font-medium text-espresso">{selectedSlot}</span> on{" "}
                   <span className="font-medium text-espresso">
                     {selectedDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                   </span>.
                 </p>
 
-                {/* GPS button */}
-                <Button
-                  variant="outline"
-                  onClick={handleGPS}
-                  disabled={gpsLoading}
-                  className="w-full mb-4 rounded-xl border-gold/30 text-espresso gap-2 h-11"
-                >
+                <Button variant="outline" onClick={handleGPS} disabled={gpsLoading}
+                  className="w-full mb-4 rounded-xl border-gold/30 text-espresso gap-2 h-11">
                   {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4 text-gold" />}
                   {gpsLoading ? "Detecting location…" : "Use My Current Location (GPS)"}
                 </Button>
@@ -401,7 +441,6 @@ export default function Book() {
                   <div className="flex-1 h-px bg-gold/15" />
                 </div>
 
-                {/* Area grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {HYD_AREAS.map(area => (
                     <button key={area.name} onClick={() => handleAreaSelect(area)}
@@ -415,11 +454,31 @@ export default function Book() {
                   ))}
                 </div>
 
+                {/* Serviceability feedback */}
                 {selectedArea && (
-                  <div className="mt-4 flex items-center gap-2 text-xs text-taupe bg-champagne/20 border border-gold/15 rounded-xl px-3 py-2">
-                    <MapPin className="w-3.5 h-3.5 text-gold shrink-0" />
-                    Selected: <span className="font-medium text-espresso">{selectedArea.name}</span>
-                    {searchLoading && <Loader2 className="w-3.5 h-3.5 animate-spin ml-auto" />}
+                  <div className="mt-4">
+                    {searchLoading && (
+                      <div className="flex items-center gap-2 text-xs text-taupe bg-champagne/20 border border-gold/15 rounded-xl px-3 py-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-gold shrink-0" />
+                        Checking availability in <span className="font-medium text-espresso">{selectedArea.name}</span>…
+                      </div>
+                    )}
+                    {!searchLoading && noCoverage && (
+                      <div className="flex items-start gap-2.5 text-xs bg-red-50 border border-red-200 rounded-xl px-3 py-3">
+                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-red-700">No beauticians available in {selectedArea.name}</p>
+                          <p className="text-red-500 mt-0.5">for this slot. Try a nearby area or change the date/time.</p>
+                        </div>
+                      </div>
+                    )}
+                    {!searchLoading && searchDone && beauticians.length > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                        <span>{beauticians.length} beautician{beauticians.length !== 1 ? "s" : ""} available near <strong>{selectedArea.name}</strong></span>
+                        {zoneExpanded && <span className="text-green-600/70">(expanded zone)</span>}
+                      </div>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -435,7 +494,7 @@ export default function Book() {
                 {searchLoading ? (
                   <div className="flex flex-col items-center gap-3 py-12 text-taupe">
                     <Loader2 className="w-8 h-8 animate-spin text-gold" />
-                    <p className="text-sm">Searching beauticians near {selectedArea?.name}…</p>
+                    <p className="text-sm">Searching near {selectedArea?.name}…</p>
                   </div>
                 ) : beauticians.length === 0 ? (
                   <div className="text-center py-10">
@@ -449,7 +508,7 @@ export default function Book() {
                   <>
                     {zoneExpanded && (
                       <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                        ⚡ All beauticians in {selectedArea?.name} are booked for this slot — showing nearest available from surrounding areas.
+                        ⚡ All beauticians in {selectedArea?.name} are booked — showing nearest from surrounding areas.
                       </div>
                     )}
                     <p className="text-xs text-taupe mb-4">
@@ -532,15 +591,61 @@ export default function Book() {
                     <p className="text-xs text-taupe">{selectedSlot}</p>
                   </InfoBlock>
 
-                  {/* Address in confirm step */}
+                  {/* Address */}
                   <div className="bg-pearl border border-gold/15 rounded-2xl p-4">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-taupe mb-3">Your Address</p>
                     <div className="space-y-3">
                       <div className="grid sm:grid-cols-2 gap-3">
                         <Field label="Full Name *" value={address.full_name}
                           onChange={v => setAddress(a => ({ ...a, full_name: v }))} placeholder="Your name" />
-                        <Field label="Mobile *" value={address.phone} type="tel"
-                          onChange={v => setAddress(a => ({ ...a, phone: v }))} placeholder="10-digit mobile" />
+                        {/* Phone field with inline OTP */}
+                        <div>
+                          <label className="block text-xs text-taupe mb-1.5">Mobile * {isLoggedIn || otpPhase === "verified" ? <span className="text-green-600 font-medium">✓ Verified</span> : ""}</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="tel"
+                              value={address.phone}
+                              onChange={e => {
+                                const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                                setAddress(a => ({ ...a, phone: v }));
+                                if (otpPhase !== "idle") { setOtpPhase("idle"); setOtpCode(""); }
+                              }}
+                              placeholder="10-digit mobile"
+                              disabled={otpPhase === "verified" || isLoggedIn}
+                              className="flex-1 h-10 rounded-xl border border-gold/20 bg-white px-3 text-sm text-espresso focus:outline-none focus:border-espresso focus:ring-1 focus:ring-espresso/20 placeholder:text-taupe/50 disabled:bg-stone-50"
+                            />
+                            {!isLoggedIn && otpPhase === "idle" && address.phone.replace(/\D/g, "").length === 10 && (
+                              <Button size="sm" onClick={() => sendOtp(address.phone)}
+                                className="h-10 px-3 rounded-xl bg-espresso text-ivory text-xs shrink-0">
+                                Send OTP
+                              </Button>
+                            )}
+                            {otpPhase === "sending" && <Loader2 className="w-5 h-5 animate-spin text-gold self-center shrink-0" />}
+                          </div>
+                          {/* OTP input row */}
+                          {(otpPhase === "sent" || otpPhase === "verifying") && (
+                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 mt-2">
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                value={otpCode}
+                                onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                placeholder="Enter OTP"
+                                className="flex-1 h-10 rounded-xl border border-gold/20 bg-white px-3 text-sm text-espresso focus:outline-none focus:border-espresso tracking-widest"
+                              />
+                              <Button size="sm" disabled={otpPhase === "verifying" || otpCode.length < 4}
+                                onClick={verifyOtp}
+                                className="h-10 px-3 rounded-xl bg-green-600 text-white text-xs shrink-0 hover:bg-green-700 disabled:opacity-50">
+                                {otpPhase === "verifying" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                              </Button>
+                              <button type="button" onClick={() => sendOtp(address.phone)}
+                                className="text-xs text-taupe hover:text-espresso shrink-0 self-center">Resend</button>
+                            </motion.div>
+                          )}
+                          {!isLoggedIn && otpPhase === "idle" && address.phone.replace(/\D/g, "").length < 10 && (
+                            <p className="text-[10px] text-taupe/70 mt-1">Enter your mobile to verify & save this booking to your account.</p>
+                          )}
+                        </div>
                       </div>
                       <Field label="Address Line 1 *" value={address.line1}
                         onChange={v => setAddress(a => ({ ...a, line1: v }))} placeholder="Flat/House No, Street, Locality" />

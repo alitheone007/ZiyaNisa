@@ -41,12 +41,21 @@ const EMPTY = {
   selfie_b64: "", id_proof_b64: "", id_type: "aadhaar",
 };
 
-function fileToBase64(file) {
+function compressToBase64(file, maxWidth = 800, quality = 0.75) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+    img.src = url;
   });
 }
 
@@ -71,9 +80,9 @@ export default function BeauticianApply() {
   async function handleFileChange(e, field) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error("Image must be under 5 MB"); return; }
+    if (file.size > 15 * 1024 * 1024) { toast.error("Image must be under 15 MB"); return; }
     try {
-      const b64 = await fileToBase64(file);
+      const b64 = await compressToBase64(file);
       setField(field, b64);
     } catch {
       toast.error("Failed to read image. Try again.");

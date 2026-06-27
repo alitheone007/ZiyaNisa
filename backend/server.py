@@ -620,6 +620,25 @@ async def verify_otp(payload: VerifyOtpInput):
     token = create_token({"sub": user_doc["id"], "contact": contact, "name": user_doc.get("name")})
     return {"access_token": token, "user": {"id": user_doc["id"], "name": user_doc.get("name"), "contact": contact, "is_admin": is_admin_contact(contact)}}
 
+@api_router.get("/auth/check-contact")
+async def check_contact(contact: str):
+    """Return whether a phone/email already has an account, and the name if so."""
+    clean = contact.strip()
+    user_doc = await db.users.find_one({"contact": clean}, {"_id": 0, "name": 1, "contact": 1})
+    if not user_doc:
+        digits = "".join(c for c in clean if c.isdigit())
+        if len(digits) >= 10:
+            last10 = digits[-10:]
+            user_doc = await db.users.find_one(
+                {"$expr": {"$eq": [{"$substrCP": ["$contact", {"$subtract": [{"$strLenCP": "$contact"}, 10]}, 10]}, last10]}},
+                {"_id": 0, "name": 1, "contact": 1},
+            )
+    return {
+        "exists": bool(user_doc),
+        "name": user_doc.get("name") if user_doc else None,
+    }
+
+
 @api_router.get("/auth/me", response_model=UserOut)
 async def get_me(authorization: Optional[str] = Header(None)):
     claims = token_from_header(authorization)
@@ -1661,6 +1680,13 @@ class BookingStatusUpdate(BaseModel):
 class DutyUpdate(BaseModel):
     phone: str
     on_duty: bool
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class BookingAddressUpdate(BaseModel):
+    address: dict
+    notes: Optional[str] = None
 
 class AdminDutyUpdate(BaseModel):
     on_duty: bool
@@ -1693,6 +1719,16 @@ def _h3_cell(lat: float, lng: float) -> Optional[str]:
     if not _H3_OK:
         return None
     return _h3.geo_to_h3(lat, lng, H3_RES)
+
+
+def _nearest_area(lat: float, lng: float) -> Optional[str]:
+    best, best_dist = None, float("inf")
+    for name, (alat, alng) in HYD_AREA_COORDS.items():
+        d = (alat - lat) ** 2 + (alng - lng) ** 2
+        if d < best_dist:
+            best_dist = d
+            best = name
+    return best
 
 
 @api_router.get("/services/areas")
@@ -1824,6 +1860,19 @@ async def admin_update_booking_status(bid: str, payload: BookingStatusUpdate, au
     return doc or {"id": bid, "status": payload.status}
 
 
+@api_router.patch("/admin/service-bookings/{bid}/address")
+async def admin_update_booking_address(bid: str, payload: BookingAddressUpdate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(403, "Admin only")
+    upd: dict = {"address": payload.address}
+    if payload.notes is not None:
+        upd["notes"] = payload.notes
+    await db.bookings.update_one({"id": bid}, {"$set": upd})
+    doc = await db.bookings.find_one({"id": bid}, {"_id": 0})
+    return doc or {"id": bid}
+
+
 @api_router.patch("/admin/beauticians/{bid}/duty")
 async def admin_toggle_beautician_duty(bid: str, payload: AdminDutyUpdate, authorization: Optional[str] = Header(None)):
     claims = token_from_header(authorization)
@@ -1854,11 +1903,21 @@ async def get_beautician_profile(phone: str):
 
 @api_router.patch("/beauticians/duty")
 async def toggle_beautician_duty(payload: DutyUpdate):
-    """Beautician self-toggles duty status using their registered phone."""
+    """Beautician self-toggles duty status. When going On Duty with GPS, updates h3_index and area."""
     clean = "".join(c for c in payload.phone if c.isdigit())[-10:]
+    update_data: dict = {"on_duty": payload.on_duty}
+    if payload.on_duty and payload.lat is not None and payload.lng is not None:
+        update_data["lat"] = payload.lat
+        update_data["lng"] = payload.lng
+        h3 = _h3_cell(payload.lat, payload.lng)
+        if h3:
+            update_data["h3_index"] = h3
+        area = _nearest_area(payload.lat, payload.lng)
+        if area:
+            update_data["area"] = area
     result = await db.beauticians.update_one(
         {"$expr": {"$eq": [{"$substrCP": ["$phone", {"$subtract": [{"$strLenCP": "$phone"}, 10]}, 10]}, clean]}},
-        {"$set": {"on_duty": payload.on_duty}},
+        {"$set": update_data},
     )
     if result.matched_count == 0:
         raise HTTPException(404, "No beautician found with this phone number")

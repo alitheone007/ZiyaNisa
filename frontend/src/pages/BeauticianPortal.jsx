@@ -56,13 +56,33 @@ export default function BeauticianPortal() {
 
   async function handleDutyToggle(newStatus) {
     setToggling(true);
+    let locationPayload = {};
+    if (newStatus && navigator.geolocation) {
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 60000 })
+        );
+        locationPayload = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      } catch {
+        toast("Location not detected — using registered area", { icon: "📍" });
+      }
+    }
     try {
       const { data } = await api.patch("/beauticians/duty", {
         phone: profile.phone,
         on_duty: newStatus,
+        ...locationPayload,
       });
-      setProfile(prev => ({ ...prev, on_duty: data.on_duty }));
-      toast.success(newStatus ? "You're now On Duty — customers can book you!" : "You're now Off Duty");
+      setProfile(prev => ({ ...prev, on_duty: data.on_duty, area: data.area || prev.area }));
+      if (newStatus) {
+        toast.success(
+          locationPayload.lat
+            ? `On Duty — customers near ${data.area || "your location"} can book you!`
+            : "You're now On Duty — customers can book you!"
+        );
+      } else {
+        toast.success("You're now Off Duty");
+      }
     } catch {
       toast.error("Failed to update status. Try again.");
     } finally {
