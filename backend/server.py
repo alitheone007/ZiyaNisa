@@ -1432,7 +1432,7 @@ async def save_skin_profile(payload: SkinProfileCreate, authorization: Optional[
     return doc
 
 
-# ── Chat / AI context (called by n8n WhatsApp router) ─────────────────────────
+# ── Chat / AI context ────────────────────────────────────────────────────────
 
 class Booking(BaseModel):
     model_config = ConfigDict(extra="ignore")
