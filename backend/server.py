@@ -49,8 +49,8 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
-ADMIN_PHONE   = os.environ.get("ADMIN_PHONE", "")   # e.g. "8341372666"
-ADMIN_EMAIL   = os.environ.get("ADMIN_EMAIL", "")   # e.g. "bilionsales@gmail.com"
+ADMIN_PHONES  = [p.strip() for p in os.environ.get("ADMIN_PHONE", "").split(",") if p.strip()]
+ADMIN_EMAILS  = {e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()}
 OLLAMA_HOST   = os.environ.get("OLLAMA_HOST",  "http://localhost:11434")
 VISION_MODEL  = os.environ.get("VISION_MODEL", "moondream")
 GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
@@ -81,11 +81,11 @@ def normalize_phone(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
 
 def is_admin_contact(contact: str) -> bool:
-    if ADMIN_EMAIL and contact.strip().lower() == ADMIN_EMAIL.strip().lower():
+    c = contact.strip()
+    if c.lower() in ADMIN_EMAILS:
         return True
-    if not ADMIN_PHONE:
-        return False
-    return normalize_phone(contact)[-10:] == normalize_phone(ADMIN_PHONE)[-10:]
+    norm = normalize_phone(c)[-10:] if c else ""
+    return bool(norm) and any(normalize_phone(p)[-10:] == norm for p in ADMIN_PHONES)
 
 def is_admin_claims(claims: dict) -> bool:
     return is_admin_contact(claims.get("contact", ""))
@@ -260,6 +260,33 @@ class ProductUpdate(BaseModel):
     actives: Optional[List[str]] = None
     category_id: Optional[str] = None
     in_stock: Optional[bool] = None
+
+class ServiceCreate(BaseModel):
+    name: str
+    duration: str = "60 min"
+    price: int
+    img: str
+    level: str = "Trained"
+    tag: str = ""
+    rating: float = 4.5
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    duration: Optional[str] = None
+    price: Optional[int] = None
+    img: Optional[str] = None
+    level: Optional[str] = None
+    tag: Optional[str] = None
+    rating: Optional[float] = None
+
+class CategoryCreate(BaseModel):
+    id: str
+    label: str
+    img: str
+
+class CategoryUpdate(BaseModel):
+    label: Optional[str] = None
+    img: Optional[str] = None
 
 class WaitlistCreate(BaseModel):
     contact: str
@@ -1102,6 +1129,89 @@ async def toggle_stock(product_id: str, body: dict, authorization: Optional[str]
     else:
         await db.products.update_one({"id": product_id}, {"$set": {"in_stock": in_stock}})
     return {"id": product_id, "in_stock": in_stock}
+
+
+# ── Admin — Services CRUD ─────────────────────────────────────────────────────
+
+@api_router.post("/admin/services")
+async def admin_create_service(payload: ServiceCreate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    service_id = f"s-{str(uuid.uuid4())[:8]}"
+    doc = {"id": service_id, **payload.model_dump()}
+    await db.services.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/admin/services/{service_id}")
+async def admin_update_service(service_id: str, payload: ServiceUpdate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    existing = await db.services.find_one({"id": service_id}, {"_id": 0})
+    if not existing:
+        seed_svc = next((s for s in SERVICES_SEED if s["id"] == service_id), None)
+        if seed_svc:
+            await db.services.insert_one({**seed_svc, **update})
+        else:
+            raise HTTPException(status_code=404, detail="Service not found")
+    else:
+        await db.services.update_one({"id": service_id}, {"$set": update})
+    return await db.services.find_one({"id": service_id}, {"_id": 0})
+
+@api_router.delete("/admin/services/{service_id}")
+async def admin_delete_service(service_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    await db.services.delete_one({"id": service_id})
+    return {"deleted": True, "id": service_id}
+
+
+# ── Admin — Categories CRUD ────────────────────────────────────────────────────
+
+@api_router.post("/admin/categories")
+async def admin_create_category(payload: CategoryCreate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if await db.categories.find_one({"id": payload.id}):
+        raise HTTPException(status_code=409, detail=f"Category ID '{payload.id}' already exists")
+    doc = payload.model_dump()
+    await db.categories.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/admin/categories/{category_id}")
+async def admin_update_category(category_id: str, payload: CategoryUpdate, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    existing = await db.categories.find_one({"id": category_id}, {"_id": 0})
+    if not existing:
+        seed_cat = next((c for c in CATEGORIES_SEED if c["id"] == category_id), None)
+        if seed_cat:
+            await db.categories.insert_one({**seed_cat, **update})
+        else:
+            raise HTTPException(status_code=404, detail="Category not found")
+    else:
+        await db.categories.update_one({"id": category_id}, {"$set": update})
+    return await db.categories.find_one({"id": category_id}, {"_id": 0})
+
+@api_router.delete("/admin/categories/{category_id}")
+async def admin_delete_category(category_id: str, authorization: Optional[str] = Header(None)):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    await db.categories.delete_one({"id": category_id})
+    return {"deleted": True, "id": category_id}
 
 
 # ── Admin — Image upload (local storage, served at /api/uploads/) ─────────────
