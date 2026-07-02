@@ -17,30 +17,30 @@ import api from "@/lib/api";
 import { SERVICES } from "@/data/seed";
 
 const HYD_AREAS = [
-  { name: "Banjara Hills",  lat: 17.4126, lng: 78.4357 },
-  { name: "Jubilee Hills",  lat: 17.4239, lng: 78.4072 },
-  { name: "Madhapur",       lat: 17.4481, lng: 78.3915 },
-  { name: "Hitech City",    lat: 17.4435, lng: 78.3772 },
-  { name: "Gachibowli",     lat: 17.4401, lng: 78.3489 },
-  { name: "Kondapur",       lat: 17.4600, lng: 78.3600 },
-  { name: "Panjagutta",     lat: 17.4270, lng: 78.4441 },
-  { name: "Ameerpet",       lat: 17.4375, lng: 78.4483 },
-  { name: "Masab Tank",     lat: 17.3961, lng: 78.4677 },
-  { name: "Film Nagar",     lat: 17.4082, lng: 78.3979 },
-  { name: "Somajiguda",     lat: 17.4281, lng: 78.4618 },
-  { name: "Begumpet",       lat: 17.4412, lng: 78.4709 },
-  { name: "Kukatpally",     lat: 17.4842, lng: 78.4002 },
-  { name: "KPHB Colony",    lat: 17.4884, lng: 78.3912 },
-  { name: "Secunderabad",   lat: 17.4399, lng: 78.4983 },
-  { name: "Dilsukhnagar",   lat: 17.3686, lng: 78.5263 },
-  { name: "LB Nagar",       lat: 17.3497, lng: 78.5513 },
-  { name: "Manikonda",      lat: 17.4003, lng: 78.3897 },
-  { name: "Kompally",       lat: 17.5456, lng: 78.4691 },
-  { name: "Nizampet",       lat: 17.5053, lng: 78.3873 },
-  { name: "Miyapur",        lat: 17.4963, lng: 78.3544 },
-  { name: "Tolichowki",     lat: 17.3917, lng: 78.4218 },
-  { name: "Mehdipatnam",    lat: 17.3965, lng: 78.4417 },
-  { name: "Nanakramguda",   lat: 17.4177, lng: 78.3560 },
+  { name: "Banjara Hills",  lat: 17.4126, lng: 78.4357, pin: "500034" },
+  { name: "Jubilee Hills",  lat: 17.4239, lng: 78.4072, pin: "500033" },
+  { name: "Madhapur",       lat: 17.4481, lng: 78.3915, pin: "500081" },
+  { name: "Hitech City",    lat: 17.4435, lng: 78.3772, pin: "500084" },
+  { name: "Gachibowli",     lat: 17.4401, lng: 78.3489, pin: "500032" },
+  { name: "Kondapur",       lat: 17.4600, lng: 78.3600, pin: "500084" },
+  { name: "Panjagutta",     lat: 17.4270, lng: 78.4441, pin: "500082" },
+  { name: "Ameerpet",       lat: 17.4375, lng: 78.4483, pin: "500016" },
+  { name: "Masab Tank",     lat: 17.3961, lng: 78.4677, pin: "500028" },
+  { name: "Film Nagar",     lat: 17.4082, lng: 78.3979, pin: "500008" },
+  { name: "Somajiguda",     lat: 17.4281, lng: 78.4618, pin: "500082" },
+  { name: "Begumpet",       lat: 17.4412, lng: 78.4709, pin: "500016" },
+  { name: "Kukatpally",     lat: 17.4842, lng: 78.4002, pin: "500072" },
+  { name: "KPHB Colony",    lat: 17.4884, lng: 78.3912, pin: "500072" },
+  { name: "Secunderabad",   lat: 17.4399, lng: 78.4983, pin: "500003" },
+  { name: "Dilsukhnagar",   lat: 17.3686, lng: 78.5263, pin: "500060" },
+  { name: "LB Nagar",       lat: 17.3497, lng: 78.5513, pin: "500074" },
+  { name: "Manikonda",      lat: 17.4003, lng: 78.3897, pin: "500089" },
+  { name: "Kompally",       lat: 17.5456, lng: 78.4691, pin: "500100" },
+  { name: "Nizampet",       lat: 17.5053, lng: 78.3873, pin: "500090" },
+  { name: "Miyapur",        lat: 17.4963, lng: 78.3544, pin: "500049" },
+  { name: "Tolichowki",     lat: 17.3917, lng: 78.4218, pin: "500008" },
+  { name: "Mehdipatnam",    lat: 17.3965, lng: 78.4417, pin: "500028" },
+  { name: "Nanakramguda",   lat: 17.4177, lng: 78.3560, pin: "500032" },
 ];
 
 const TIME_SLOTS = [
@@ -108,7 +108,7 @@ export default function Book() {
 
   useEffect(() => {
     if (selectedArea)
-      setAddress(a => ({ ...a, city: selectedArea.name }));
+      setAddress(a => ({ ...a, city: selectedArea.name, pin: selectedArea.pin || a.pin }));
   }, [selectedArea]);
 
   async function doSearch(area) {
@@ -231,7 +231,7 @@ export default function Book() {
 
   function canProceed() {
     if (step === 0) return !!(selectedDate && selectedSlot);
-    if (step === 1) return !!(selectedArea) && !searchLoading && !noCoverage;
+    if (step === 1) return !!(selectedArea) && !searchLoading;
     if (step === 2) return !!selectedBeautician;
     if (step === 3) {
       const phone = address.phone.replace(/\D/g, "");
@@ -239,8 +239,7 @@ export default function Book() {
         address.full_name.trim() &&
         phone.length >= 10 &&
         address.line1.trim() &&
-        address.pin.replace(/\D/g, "").length === 6 &&
-        (isLoggedIn || otpPhase === "verified")
+        address.pin.replace(/\D/g, "").length === 6
       );
     }
     return true;
