@@ -172,21 +172,21 @@ All routes prefixed `/api/`. Auth header: `Authorization: Bearer <jwt>`.
 | DELETE | `/admin/products/:id` | Admin |
 
 ### Services
-| Method | Path | Auth |
-|---|---|---|
-| GET | `/services` | Public |
-| GET | `/services/:id` | Public |
-| POST | `/admin/services` | Admin |
-| PUT | `/admin/services/:id` | Admin |
-| DELETE | `/admin/services/:id` | Admin |
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/services` | Public | Returns seed data if collection empty |
+| POST | `/services/search` | Public | Keyword search |
+| POST | `/admin/services` | Admin | Create service |
+| PUT | `/admin/services/:id` | Admin | Update; materializes seed item if first edit |
+| DELETE | `/admin/services/:id` | Admin | |
 
 ### Categories
-| Method | Path | Auth |
-|---|---|---|
-| GET | `/categories` | Public |
-| POST | `/admin/categories` | Admin |
-| PUT | `/admin/categories/:id` | Admin |
-| DELETE | `/admin/categories/:id` | Admin |
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/categories` | Public | Returns seed data if collection empty |
+| POST | `/admin/categories` | Admin | ID must be unique slug |
+| PUT | `/admin/categories/:id` | Admin | Cannot change id after creation |
+| DELETE | `/admin/categories/:id` | Admin | |
 
 ### Cart / Wishlist / Compare
 | Method | Path | Auth |
@@ -274,16 +274,16 @@ Bug reports with `create_github_issue: true` auto-create a GitHub Issue via `GIT
 ## Admin panel (`/admin`)
 
 Tabs:
-1. **Dashboard** — analytics cards (revenue, bookings, orders, users)
-2. **Products** — CRUD with image upload (Upload button → `/api/admin/upload-image`)
-3. **Services** — CRUD
-4. **Categories** — CRUD
-5. **Beauticians** — approve/reject applications
-6. **Orders** — view, update status
-7. **Bookings** — view, manage
-8. **Bug Reports** — view list, open detail, change status, file size guard (15 MB per screenshot)
-9. **Feature Requests** — same as Bug Reports
-10. **Analytics** — charts (7-day revenue, bookings by category)
+1. **Analytics** — revenue, bookings, orders, users cards + 7-day charts
+2. **Products** — full CRUD: image upload, name, brand, price/MRP, category, actives, badges, in-stock toggle
+3. **Services** — full CRUD: image upload, name, duration, price, skill level (dropdown), tag
+4. **Categories** — full CRUD: image upload, slug ID (create only), display label
+5. **Orders** — list all orders, update status, set tracking URL (marks as Dispatched)
+6. **Svc Bookings** — list service bookings, update status, edit address/notes
+7. **Beauticians** — approve/reject beautician applications
+8. **Applications** — view full application detail
+9. **Bug Reports** — list, open detail, change status; screenshots; GitHub Issue auto-create
+10. **Features** — feature request list and detail management
 
 ---
 
@@ -370,8 +370,8 @@ See [`router/SETUP.md`](router/SETUP.md) for router API and adding new tenants.
 | `DB_NAME` | `ziyanisa` |
 | `ENVIRONMENT` | `production` (disables dev OTP bypass) |
 | `JWT_SECRET` | `openssl rand -hex 32` |
-| `ADMIN_PHONE` | 10-digit phone → gets `role: admin` JWT |
-| `ADMIN_EMAIL` | Email → gets `role: admin` JWT |
+| `ADMIN_PHONE` | Comma-separated 10-digit phones → each gets `role: admin` JWT |
+| `ADMIN_EMAIL` | Comma-separated emails → each gets `role: admin` JWT |
 | `CORS_ORIGINS` | `https://ziyanisa.bilionsales.com` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | Email OTP via Gmail/Brevo/Resend |
 | `SMTP_FROM` | Sender address for OTP emails |
