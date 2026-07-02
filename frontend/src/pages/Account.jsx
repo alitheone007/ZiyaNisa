@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LogOut, Package, ShoppingBag, User, ChevronRight, CheckCircle2,
   Clock, Scissors, MapPin, Trash2, Star, RefreshCw, Home, Briefcase, MapPinned,
-  Plus, Sparkles,
+  Plus, Sparkles, FileDown, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +77,42 @@ export default function Account() {
   });
 
   const [pendingRatings, setPendingRatings] = useState({});
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivating, setDeactivating]     = useState(false);
+
+  async function handleDeactivate() {
+    setDeactivating(true);
+    try {
+      await api.delete("/auth/account");
+      logout();
+      toast.success("Account closed. You have been signed out.");
+      navigate("/");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Could not deactivate account");
+      setDeactivating(false);
+      setDeactivateOpen(false);
+    }
+  }
+
+  function downloadInvoice(orderId) {
+    const token = localStorage.getItem("zn_token");
+    const a = document.createElement("a");
+    a.href = `/api/orders/${orderId}/invoice`;
+    a.setAttribute("download", `ZiyaNisa-Invoice-${orderId.slice(-8).toUpperCase()}.pdf`);
+    // Set auth header via fetch and open blob
+    fetch(a.href, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.blob() : Promise.reject(r.statusText))
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => toast.error("Could not download invoice"));
+  }
+
   const rateBooking = useMutation({
     mutationFn: ({ id, rating, comment }) => api.patch(`/bookings/${id}/rate`, { rating, comment }),
     onSuccess: () => {
@@ -147,11 +183,41 @@ export default function Account() {
               <h2 className="font-serif text-xl text-espresso">{user.name || "Your Account"}</h2>
               <p className="text-sm text-taupe truncate">{user.contact}</p>
             </div>
-            <Button variant="ghost" onClick={handleLogout}
-              className="rounded-full text-taupe hover:text-espresso hover:bg-rosemist/60 gap-1.5 text-sm">
-              <LogOut className="w-4 h-4" /> Sign out
-            </Button>
+            <div className="flex flex-col items-end gap-2">
+              <Button variant="ghost" onClick={handleLogout}
+                className="rounded-full text-taupe hover:text-espresso hover:bg-rosemist/60 gap-1.5 text-sm">
+                <LogOut className="w-4 h-4" /> Sign out
+              </Button>
+              <button onClick={() => setDeactivateOpen(true)}
+                className="text-[11px] text-red-400 hover:text-red-600 hover:underline transition">
+                Close account
+              </button>
+            </div>
           </motion.div>
+
+          {/* Account deactivation confirmation */}
+          {deactivateOpen && (
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+              className="bg-pearl border border-red-200 rounded-2xl p-5 mb-6 shadow-soft">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-espresso text-sm mb-1">Close your account?</p>
+                  <p className="text-xs text-taupe">Your order and booking history will be retained, but you won't be able to sign in again. This cannot be undone.</p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setDeactivateOpen(false)}
+                  className="flex-1 h-9 rounded-full border border-gold/30 text-sm text-espresso hover:bg-rosemist/60 transition">
+                  Cancel
+                </button>
+                <button onClick={handleDeactivate} disabled={deactivating}
+                  className="flex-1 h-9 rounded-full bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition disabled:opacity-50">
+                  {deactivating ? "Closing…" : "Yes, close account"}
+                </button>
+              </div>
+            </motion.div>
+          )}
 
           {/* Quick links */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -237,15 +303,21 @@ export default function Account() {
                             <span>{order.shipping_address.full_name}, {order.shipping_address.line1}{order.shipping_address.city ? `, ${order.shipping_address.city}` : ""}{order.shipping_address.pin ? ` — ${order.shipping_address.pin}` : ""}</span>
                           </p>
                         )}
-                        <div className="mt-3 pt-3 border-t border-gold/10 flex items-center justify-between gap-3">
+                        <div className="mt-3 pt-3 border-t border-gold/10 flex items-center justify-between gap-3 flex-wrap">
                           <Link to={`/orders/${order.id}`}
                             className="text-xs font-medium text-espresso underline underline-offset-2 hover:text-gold transition">
                             View full order →
                           </Link>
-                          <button onClick={() => reorder(order)}
-                            className="inline-flex items-center gap-1.5 text-xs text-taupe hover:text-espresso transition border border-gold/20 rounded-full px-3 py-1.5 hover:border-gold/50">
-                            <RefreshCw className="w-3 h-3" /> Reorder
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => downloadInvoice(order.id)}
+                              className="inline-flex items-center gap-1.5 text-xs text-taupe hover:text-espresso transition border border-gold/20 rounded-full px-3 py-1.5 hover:border-gold/50">
+                              <FileDown className="w-3 h-3" /> Invoice
+                            </button>
+                            <button onClick={() => reorder(order)}
+                              className="inline-flex items-center gap-1.5 text-xs text-taupe hover:text-espresso transition border border-gold/20 rounded-full px-3 py-1.5 hover:border-gold/50">
+                              <RefreshCw className="w-3 h-3" /> Reorder
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     );

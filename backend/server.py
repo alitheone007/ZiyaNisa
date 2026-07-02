@@ -531,38 +531,35 @@ async def get_products(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
-    query: dict = {}
+    # Fetch all DB products (no pagination yet — we merge with seeds in Python)
+    db_all = await db.products.find({}, {"_id": 0}).to_list(10000)
+    db_ids = {p["id"] for p in db_all}
+
+    # Fill in seed products whose IDs are not yet in the DB
+    seed_extras = [p for p in PRODUCTS_SEED if p["id"] not in db_ids]
+    all_products = db_all + seed_extras
+
+    # Apply filters
     if category:
-        query["category_id"] = category
+        all_products = [p for p in all_products if p.get("category_id") == category]
     if q:
-        query["$or"] = [
-            {"name":  {"$regex": q, "$options": "i"}},
-            {"brand": {"$regex": q, "$options": "i"}},
-            {"actives": {"$regex": q, "$options": "i"}},
+        ql = q.lower()
+        all_products = [
+            p for p in all_products
+            if ql in p.get("name", "").lower()
+            or ql in p.get("brand", "").lower()
+            or any(ql in a.lower() for a in p.get("actives", []))
         ]
-    mongo_sort = SORT_MAP.get(sort)
-    total = await db.products.count_documents(query)
-    if total == 0:
-        # fallback: serve in-memory seed so the shop is never empty
-        seed = PRODUCTS_SEED
-        if category: seed = [p for p in seed if p.get("category_id") == category]
-        if q:
-            ql = q.lower()
-            seed = [p for p in seed if ql in p["name"].lower() or ql in p["brand"].lower() or
-                    any(ql in a.lower() for a in p.get("actives", []))]
-        if sort == "rating":     seed = sorted(seed, key=lambda p: p.get("rating", 0), reverse=True)
-        elif sort == "reviews":  seed = sorted(seed, key=lambda p: p.get("reviews", 0), reverse=True)
-        elif sort == "price_asc":  seed = sorted(seed, key=lambda p: p.get("price", 0))
-        elif sort == "price_desc": seed = sorted(seed, key=lambda p: p.get("price", 0), reverse=True)
-        total = len(seed)
-        skip = (page - 1) * limit
-        items = seed[skip: skip + limit]
-        return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
-    skip = (page - 1) * limit
-    cursor = db.products.find(query, {"_id": 0}).skip(skip).limit(limit)
-    if mongo_sort:
-        cursor = cursor.sort(mongo_sort)
-    items = await cursor.to_list(limit)
+
+    # Sort
+    if sort == "rating":      all_products.sort(key=lambda p: p.get("rating", 0),  reverse=True)
+    elif sort == "reviews":   all_products.sort(key=lambda p: p.get("reviews", 0), reverse=True)
+    elif sort == "price_asc": all_products.sort(key=lambda p: p.get("price", 0))
+    elif sort == "price_desc":all_products.sort(key=lambda p: p.get("price", 0),  reverse=True)
+
+    total = len(all_products)
+    skip  = (page - 1) * limit
+    items = all_products[skip: skip + limit]
     return {"items": items, "total": total, "page": page, "total_pages": max(1, math.ceil(total / limit))}
 
 @api_router.get("/products/for-me", response_model=ProductsPage)
@@ -660,6 +657,8 @@ async def verify_otp(payload: VerifyOtpInput):
             user_doc = await db.users.find_one({"contact": paired}, {"_id": 0})
             if user_doc:
                 break
+    if user_doc and user_doc.get("deactivated"):
+        raise HTTPException(status_code=403, detail="This account has been deactivated. Contact support to restore access.")
     if not user_doc:
         uid = str(uuid.uuid4())
         user_doc = {
@@ -712,6 +711,22 @@ async def update_profile(payload: UpdateProfileInput, authorization: Optional[st
         await db.users.update_one({"id": uid}, {"$set": update})
     user_doc = await db.users.find_one({"id": uid}, {"_id": 0})
     return {"id": uid, "name": user_doc.get("name"), "contact": user_doc["contact"], "is_admin": is_admin_claims(claims)}
+
+
+@api_router.delete("/auth/account")
+async def deactivate_account(authorization: Optional[str] = Header(None)):
+    """Soft-delete the calling user's account — marks deactivated, preserves order history."""
+    claims = token_from_header(authorization)
+    uid = claims["sub"]
+    if is_admin_claims(claims):
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be deactivated this way.")
+    result = await db.users.update_one(
+        {"id": uid},
+        {"$set": {"deactivated": True, "deactivated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "Account deactivated. Your order history has been retained."}
 
 
 # ── Lead capture ───────────────────────────────────────────────────────────────
@@ -1338,6 +1353,200 @@ async def set_tracking(order_id: str, body: dict, authorization: Optional[str] =
             asyncio.create_task(deliver_notification(user["contact"], f"Order #{short_id} Dispatched — ZiyaNisa", plain, html))
 
     return {"id": order_id, "tracking_url": tracking_url}
+
+
+# ── Admin — Edit Order ────────────────────────────────────────────────────────
+
+@api_router.put("/admin/orders/{order_id}")
+async def admin_edit_order(order_id: str, body: dict, authorization: Optional[str] = Header(None)):
+    """Edit order shipping address, notes, or discount. Does NOT modify items/total to preserve payment integrity."""
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    allowed = {"shipping_address", "notes", "discount", "status", "tracking_url"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    if not update:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+    result = await db.orders.update_one({"id": order_id}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return updated
+
+
+# ── Invoice PDF ───────────────────────────────────────────────────────────────
+
+def _build_invoice_pdf(order: dict) -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    import io
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=15*mm, rightMargin=15*mm,
+                            topMargin=15*mm, bottomMargin=15*mm)
+    styles = getSampleStyleSheet()
+    gold   = colors.HexColor("#D8B45C")
+    dark   = colors.HexColor("#2B2118")
+    taupe  = colors.HexColor("#8A7A6A")
+
+    h1 = ParagraphStyle("h1", parent=styles["Normal"], fontSize=22, textColor=dark,
+                         fontName="Helvetica-Bold", spaceAfter=2)
+    h2 = ParagraphStyle("h2", parent=styles["Normal"], fontSize=11, textColor=dark,
+                         fontName="Helvetica-Bold", spaceAfter=2)
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=9, textColor=taupe, spaceAfter=1)
+    normal = ParagraphStyle("norm", parent=styles["Normal"], fontSize=9, textColor=dark, spaceAfter=1)
+    right  = ParagraphStyle("right", parent=styles["Normal"], fontSize=9, textColor=dark, alignment=TA_RIGHT)
+
+    short_id = order.get("id", "")[:8].upper()
+    date_str = ""
+    if order.get("created_at"):
+        try:
+            from datetime import datetime as _dt
+            d = _dt.fromisoformat(order["created_at"].replace("Z", "+00:00"))
+            date_str = d.strftime("%d %b %Y")
+        except Exception:
+            date_str = order["created_at"][:10]
+
+    items_total = sum(i.get("price", 0) * i.get("qty", 1) for i in order.get("items", []))
+    discount    = order.get("discount", 0) or 0
+    grand_total = order.get("total", items_total - discount)
+    gst_rate    = 0.18
+    taxable     = round(grand_total / (1 + gst_rate), 2)
+    cgst        = round((grand_total - taxable) / 2, 2)
+    sgst        = cgst
+
+    addr = order.get("shipping_address") or {}
+    addr_lines = [
+        addr.get("full_name", ""),
+        addr.get("line1", ""),
+        addr.get("line2", ""),
+        f"{addr.get('city', '')} — {addr.get('pin', '')}",
+        addr.get("state", ""),
+        addr.get("phone", ""),
+    ]
+    addr_str = "\n".join(l for l in addr_lines if l.strip())
+
+    story = []
+
+    # Header
+    story.append(Paragraph("ZiyaNisa", h1))
+    story.append(Paragraph("BILION SALES AND SERVICES", h2))
+    story.append(Paragraph("Hyderabad, Telangana", small))
+    story.append(Paragraph("GSTIN: 36AARFB7808C1ZD", small))
+    story.append(HRFlowable(width="100%", thickness=1, color=gold, spaceAfter=6))
+
+    # Invoice meta + bill-to in a two-column table
+    meta = [
+        [Paragraph("<b>TAX INVOICE</b>", ParagraphStyle("", parent=styles["Normal"], fontSize=13,
+                   textColor=dark, fontName="Helvetica-Bold")),
+         Paragraph(f"<b>Invoice #</b> ZN-{short_id}<br/><b>Date:</b> {date_str}", right)],
+    ]
+    t = Table(meta, colWidths=["60%", "40%"])
+    t.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "TOP")]))
+    story.append(t)
+    story.append(Spacer(1, 4*mm))
+
+    story.append(Paragraph("<b>Bill To:</b>", normal))
+    story.append(Paragraph(addr_str.replace("\n", "<br/>") if addr_str else "—", normal))
+    story.append(Spacer(1, 4*mm))
+
+    # Items table
+    item_data = [["#", "Item", "Qty", "Unit Price", "Amount"]]
+    for idx, item in enumerate(order.get("items", []), 1):
+        qty   = item.get("qty", 1)
+        price = item.get("price", 0)
+        item_data.append([
+            str(idx),
+            item.get("name", ""),
+            str(qty),
+            f"₹{price:,.2f}",
+            f"₹{price * qty:,.2f}",
+        ])
+
+    col_w = [8*mm, 85*mm, 15*mm, 28*mm, 28*mm]
+    t2 = Table(item_data, colWidths=col_w, repeatRows=1)
+    t2.setStyle(TableStyle([
+        ("BACKGROUND",   (0,0), (-1,0),  gold),
+        ("TEXTCOLOR",    (0,0), (-1,0),  colors.white),
+        ("FONTNAME",     (0,0), (-1,0),  "Helvetica-Bold"),
+        ("FONTSIZE",     (0,0), (-1,-1), 8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1), [colors.white, colors.HexColor("#FFF8EF")]),
+        ("GRID",         (0,0), (-1,-1), 0.3, colors.HexColor("#E8D8C0")),
+        ("ALIGN",        (2,0), (-1,-1), "RIGHT"),
+        ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING",   (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 3),
+    ]))
+    story.append(t2)
+    story.append(Spacer(1, 3*mm))
+
+    # Totals
+    totals_data = []
+    if discount > 0:
+        totals_data.append(["Subtotal", f"₹{items_total:,.2f}"])
+        totals_data.append([f"Discount", f"- ₹{discount:,.2f}"])
+    totals_data.append(["Taxable Value (excl. GST 18%)", f"₹{taxable:,.2f}"])
+    totals_data.append(["CGST @9%", f"₹{cgst:,.2f}"])
+    totals_data.append(["SGST @9%", f"₹{sgst:,.2f}"])
+    totals_data.append(["Grand Total", f"₹{grand_total:,.2f}"])
+
+    t3 = Table([[Paragraph(r[0], right), Paragraph(r[1], right)] for r in totals_data],
+               colWidths=["70%", "30%"])
+    t3.setStyle(TableStyle([
+        ("FONTSIZE",      (0,0), (-1,-1), 9),
+        ("TOPPADDING",    (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("LINEABOVE",     (0,-1),(-1,-1), 0.8, dark),
+        ("FONTNAME",      (0,-1),(-1,-1), "Helvetica-Bold"),
+    ]))
+    story.append(t3)
+
+    story.append(Spacer(1, 5*mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=gold))
+    story.append(Spacer(1, 2*mm))
+    story.append(Paragraph(
+        "This is a computer-generated invoice and does not require a signature. "
+        "Thank you for shopping with ZiyaNisa — BILION SALES AND SERVICES.",
+        ParagraphStyle("footer", parent=styles["Normal"], fontSize=7.5, textColor=taupe, alignment=TA_CENTER)
+    ))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+@api_router.get("/orders/{order_id}/invoice")
+async def download_invoice(order_id: str, authorization: Optional[str] = Header(None)):
+    """Download GST invoice PDF for a specific order (customer's own orders only)."""
+    from fastapi.responses import Response
+    claims = token_from_header(authorization)
+    order = await db.orders.find_one({"id": order_id, "user_id": claims["sub"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    pdf = _build_invoice_pdf(order)
+    short = order_id[:8].upper()
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="ZiyaNisa-Invoice-{short}.pdf"'})
+
+
+@api_router.get("/admin/orders/{order_id}/invoice")
+async def admin_download_invoice(order_id: str, authorization: Optional[str] = Header(None)):
+    """Download GST invoice PDF for any order (admin only)."""
+    from fastapi.responses import Response
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    pdf = _build_invoice_pdf(order)
+    short = order_id[:8].upper()
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="ZiyaNisa-Invoice-{short}.pdf"'})
 
 
 # ── Notify-Me Waitlist ─────────────────────────────────────────────────────────

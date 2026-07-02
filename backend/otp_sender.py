@@ -42,7 +42,7 @@ async def send_sms_otp(phone: str, otp: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(
-                f"https://2factor.in/API/V1/{TWOFACTOR_API_KEY}/SMS/{digits}/{otp}/OTP1"
+                f"https://2factor.in/API/V1/{TWOFACTOR_API_KEY}/SMS/{digits}/{otp}/AUTOGEN"
             )
             data = r.json()
             if data.get("Status") == "Success":

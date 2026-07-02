@@ -5,6 +5,13 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Set the auth header synchronously from localStorage so the very first
+// API calls on page load (fired by useQuery before useEffect runs) are
+// authenticated. Without this, React renders + fires queries before
+// AuthContext's useEffect has a chance to set the header → 401 → logout.
+const _t = localStorage.getItem("zn_token");
+if (_t) api.defaults.headers.common["Authorization"] = `Bearer ${_t}`;
+
 // On 401 (expired/invalid token), clear auth state and send to login.
 // Skip if we're already on an auth endpoint to avoid redirect loops.
 api.interceptors.response.use(
