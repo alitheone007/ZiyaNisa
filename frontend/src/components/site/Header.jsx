@@ -25,9 +25,10 @@ const NAV = [
 ];
 
 export default function Header() {
-  const [scrolled,  setScrolled]  = useState(false);
-  const [location,  setLocation]  = useState("Hyderabad");
-  const [searchVal, setSearchVal] = useState("");
+  const [scrolled,    setScrolled]    = useState(false);
+  const [location,    setLocation]    = useState("Hyderabad");
+  const [searchVal,   setSearchVal]   = useState("");
+  const [mobileOpen,  setMobileOpen]  = useState(false);
 
   const { totalItems }       = useCart();
   const { items: wishItems } = useWishlist();
@@ -51,7 +52,13 @@ export default function Header() {
   function handleLogout() {
     logout();
     toast.success("Signed out");
+    setMobileOpen(false);
     navigate("/");
+  }
+
+  function mobileTo(href) {
+    setMobileOpen(false);
+    navigate(href);
   }
 
   const initials = user?.name
@@ -204,7 +211,8 @@ export default function Header() {
 
           {/* Mobile menu */}
           <Button data-testid="mobile-menu-btn" variant="ghost" size="icon"
-            className="rounded-full hover:bg-rosemist/60 lg:hidden">
+            className="rounded-full hover:bg-rosemist/60 lg:hidden"
+            onClick={() => setMobileOpen(o => !o)}>
             <Menu className="w-5 h-5 text-espresso" />
           </Button>
         </div>
@@ -224,6 +232,100 @@ export default function Header() {
           />
         </div>
       </div>
+
+      {/* Mobile full-screen menu */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 top-0 z-40 flex">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-espresso/40 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)} />
+
+          {/* Drawer panel — slides in from right */}
+          <div className="absolute right-0 top-0 bottom-0 w-72 bg-ivory shadow-2xl flex flex-col overflow-y-auto">
+            {/* Header row */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gold/15">
+              <span className="font-serif text-lg text-espresso tracking-widest">
+                ZIYA<span className="text-gold">NISA</span>
+              </span>
+              <button onClick={() => setMobileOpen(false)}
+                className="w-8 h-8 rounded-full hover:bg-rosemist/60 flex items-center justify-center">
+                <span className="text-xl text-taupe leading-none">✕</span>
+              </button>
+            </div>
+
+            {/* Account section */}
+            <div className="px-5 py-4 border-b border-gold/15">
+              {isLoggedIn ? (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gold to-champagne flex items-center justify-center shadow-goldGlow">
+                      <span className="text-pearl font-serif text-sm">{initials}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-espresso truncate">{user.name || "Your Account"}</p>
+                      <p className="text-[11px] text-taupe truncate">{user.contact}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <button onClick={() => mobileTo("/account")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-espresso hover:bg-rosemist/60 transition-colors">
+                      <User className="w-4 h-4 text-taupe shrink-0" /> My Account
+                    </button>
+                    <button onClick={() => mobileTo("/account")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-espresso hover:bg-rosemist/60 transition-colors">
+                      <Package className="w-4 h-4 text-taupe shrink-0" /> My Orders
+                    </button>
+                    <button onClick={() => mobileTo("/skin-quiz")}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-espresso hover:bg-rosemist/60 transition-colors">
+                      <Sparkles className="w-4 h-4 text-gold shrink-0" /> Skin Quiz
+                    </button>
+                    {user?.is_admin && (
+                      <button onClick={() => mobileTo("/admin")}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-espresso bg-gold/10 hover:bg-gold/20 transition-colors font-medium">
+                        <LayoutDashboard className="w-4 h-4 text-gold shrink-0" /> Admin Dashboard
+                      </button>
+                    )}
+                    <button onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-espresso hover:bg-rosemist/60 transition-colors">
+                      <LogOut className="w-4 h-4 text-taupe shrink-0" /> Sign Out
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button onClick={() => mobileTo("/login")}
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-full bg-espresso text-ivory text-sm font-medium">
+                  <User className="w-4 h-4" /> Sign In
+                </button>
+              )}
+            </div>
+
+            {/* Nav links */}
+            <nav className="px-5 py-4 space-y-0.5">
+              <p className="text-[10px] uppercase tracking-widest text-taupe mb-2 px-3">Browse</p>
+              {NAV.map(n => (
+                <button key={n.label}
+                  onClick={() => { setMobileOpen(false); if (n.href.startsWith("#")) { document.querySelector(n.href)?.scrollIntoView({ behavior: "smooth" }); } else { navigate(n.href); } }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl text-sm text-espresso hover:bg-rosemist/60 transition-colors">
+                  {n.label}
+                </button>
+              ))}
+            </nav>
+
+            {/* Location */}
+            <div className="px-5 pb-6 mt-auto">
+              <p className="text-[10px] uppercase tracking-widest text-taupe mb-2 px-3">Deliver to</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {["Hyderabad", "Bengaluru", "Mumbai", "Delhi NCR"].map(c => (
+                  <button key={c} onClick={() => { setLocation(c); setMobileOpen(false); }}
+                    className={`px-3 py-2 rounded-xl text-xs text-left transition-colors ${location === c ? "bg-gold/15 text-espresso font-medium" : "text-taupe hover:bg-rosemist/60"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.header>
   );
 }

@@ -49,8 +49,13 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 30
 DEV_MODE = os.environ.get("ENVIRONMENT", "development") == "development"
-ADMIN_PHONES  = [p.strip() for p in os.environ.get("ADMIN_PHONE", "").split(",") if p.strip()]
-ADMIN_EMAILS  = {e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()}
+# Comma-separated; order matters: ADMIN_PHONE[i] and ADMIN_EMAIL[i] are the same person
+ADMIN_PHONES       = [p.strip() for p in os.environ.get("ADMIN_PHONE", "").split(",") if p.strip()]
+_ADMIN_EMAILS_LIST = [e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()]
+ADMIN_EMAILS       = set(_ADMIN_EMAILS_LIST)
+# Pairs: [(phone_or_None, email_or_None), ...] — same index means same person
+from itertools import zip_longest as _zip_longest
+_ADMIN_PAIRS: List[tuple] = list(_zip_longest(ADMIN_PHONES, _ADMIN_EMAILS_LIST, fillvalue=None))
 OLLAMA_HOST   = os.environ.get("OLLAMA_HOST",  "http://localhost:11434")
 VISION_MODEL  = os.environ.get("VISION_MODEL", "moondream")
 GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
@@ -89,6 +94,17 @@ def is_admin_contact(contact: str) -> bool:
 
 def is_admin_claims(claims: dict) -> bool:
     return is_admin_contact(claims.get("contact", ""))
+
+def get_admin_paired_contacts(contact: str) -> List[str]:
+    """Return the other contact(s) that belong to the same admin person."""
+    c = contact.strip()
+    norm = normalize_phone(c)[-10:] if not is_email(c) else None
+    for phone, email in _ADMIN_PAIRS:
+        phone_match = phone and norm and normalize_phone(phone)[-10:] == norm
+        email_match = email and is_email(c) and email.lower() == c.lower()
+        if phone_match or email_match:
+            return [x for x in [phone, email] if x and x != c]
+    return []
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -638,6 +654,12 @@ async def verify_otp(payload: VerifyOtpInput):
     OTP_STORE.pop(contact, None)
 
     user_doc = await db.users.find_one({"contact": contact}, {"_id": 0})
+    if not user_doc and is_admin_contact(contact):
+        # Admin may have signed in before with their paired phone/email — reuse that record
+        for paired in get_admin_paired_contacts(contact):
+            user_doc = await db.users.find_one({"contact": paired}, {"_id": 0})
+            if user_doc:
+                break
     if not user_doc:
         uid = str(uuid.uuid4())
         user_doc = {
