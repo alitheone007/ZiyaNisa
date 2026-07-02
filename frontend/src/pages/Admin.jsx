@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -7,7 +7,7 @@ import {
   BarChart2, ShoppingBag, TrendingUp, Users, Plus, Pencil,
   Trash2, ToggleLeft, ToggleRight, Truck, X, Check,
   MapPin, Star, Phone, UserCheck, ClipboardList, Loader2,
-  Bug, ExternalLink, AlertTriangle, Sparkles,
+  Bug, ExternalLink, AlertTriangle, Sparkles, Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
@@ -203,6 +203,8 @@ function ProductsTab() {
   const [editId, setEditId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const imgFileRef = useRef();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["admin-products", page],
@@ -286,11 +288,31 @@ function ProductsTab() {
     });
   }
 
+  async function handleImgUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("Image must be under 10 MB"); return; }
+    setUploadingImg(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data: res } = await api.post("/admin/upload-image", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setForm(f => ({ ...f, img: res.url }));
+      toast.success("Uploaded to Google Drive");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Upload failed — check server Drive config");
+    } finally {
+      setUploadingImg(false);
+      e.target.value = "";
+    }
+  }
+
   const products = data?.items || [];
   const FIELDS = [
     { key: "name",        label: "Product Name",              span: "col-span-2 md:col-span-2" },
     { key: "brand",       label: "Brand" },
-    { key: "img",         label: "Image URL",                 span: "col-span-2 md:col-span-3" },
     { key: "price",       label: "Price (₹)",                 type: "number" },
     { key: "mrp",         label: "MRP (₹)",                   type: "number" },
     { key: "category_id", label: "Category ID" },
@@ -326,6 +348,34 @@ function ProductsTab() {
               <h3 className="col-span-2 md:col-span-3 font-medium text-espresso text-sm mb-1">
                 {editId ? "Edit Product" : "New Product"}
               </h3>
+
+              {/* Image — URL input + Drive upload button */}
+              <div className="col-span-2 md:col-span-3">
+                <label className="text-[11px] text-taupe block mb-1">Image</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    value={form.img}
+                    onChange={e => setForm(f => ({ ...f, img: e.target.value }))}
+                    placeholder="Paste image URL  —  or upload to Google Drive →"
+                    className="flex-1 h-9 rounded-lg border border-stone-200 px-3 text-sm text-espresso bg-white focus:outline-none focus:ring-1 focus:ring-gold"
+                  />
+                  <button type="button" onClick={() => imgFileRef.current?.click()}
+                    disabled={uploadingImg}
+                    className="h-9 px-3 rounded-lg border border-stone-200 text-xs text-taupe flex items-center gap-1.5 hover:border-gold hover:text-espresso transition-colors disabled:opacity-50 shrink-0">
+                    {uploadingImg
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Uploading…</>
+                      : <><Upload className="w-3.5 h-3.5" />Upload</>}
+                  </button>
+                  <input ref={imgFileRef} type="file" accept="image/*" className="sr-only"
+                    onChange={handleImgUpload} />
+                  {form.img && (
+                    <img src={form.img} alt="preview"
+                      className="w-9 h-9 rounded-lg object-cover border border-stone-200 shrink-0" />
+                  )}
+                </div>
+              </div>
+
               {FIELDS.map(({ key, label, span = "", type = "text" }) => (
                 <div key={key} className={span}>
                   <label className="text-[11px] text-taupe block mb-1">{label}</label>

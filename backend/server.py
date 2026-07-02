@@ -1100,6 +1100,32 @@ async def toggle_stock(product_id: str, body: dict, authorization: Optional[str]
     return {"id": product_id, "in_stock": in_stock}
 
 
+# ── Admin — Image upload (Google Drive) ───────────────────────────────────────
+
+import gdrive as _gdrive
+
+@api_router.post("/admin/upload-image")
+async def admin_upload_image(
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    claims = token_from_header(authorization)
+    if not is_admin_claims(claims):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large — max 10 MB")
+    mime = file.content_type or "image/jpeg"
+    try:
+        url = await _gdrive.upload_image(file.filename or "image.jpg", data, mime)
+        return {"url": url}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logging.error("Drive upload failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Upload failed — check server logs")
+
+
 # ── Admin — Analytics ──────────────────────────────────────────────────────────
 
 @api_router.get("/admin/analytics")
