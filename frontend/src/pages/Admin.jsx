@@ -7,6 +7,7 @@ import {
   BarChart2, ShoppingBag, TrendingUp, Users, Plus, Pencil,
   Trash2, ToggleLeft, ToggleRight, Truck, X, Check,
   MapPin, Star, Phone, UserCheck, ClipboardList, Loader2,
+  Bug, ExternalLink, AlertTriangle, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
@@ -1281,6 +1282,964 @@ function ApplicationsTab() {
   );
 }
 
+// ── Bug Report helpers ────────────────────────────────────────────────────────
+
+function compressToBase64(file, maxWidth = 900, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+    img.src = url;
+  });
+}
+
+const BUG_STATUSES = [
+  { value: "open",         label: "Open",         color: "bg-red-100 text-red-700" },
+  { value: "acknowledged", label: "Acknowledged", color: "bg-blue-100 text-blue-700" },
+  { value: "in_progress",  label: "In Progress",  color: "bg-amber-100 text-amber-700" },
+  { value: "resolved",     label: "Resolved",     color: "bg-green-100 text-green-700" },
+  { value: "wont_fix",     label: "Won't Fix",    color: "bg-stone-100 text-stone-600" },
+];
+
+const SEVERITY_STYLES = {
+  critical: { badge: "bg-red-100 text-red-700", emoji: "🔴" },
+  high:     { badge: "bg-orange-100 text-orange-700", emoji: "🟠" },
+  medium:   { badge: "bg-amber-100 text-amber-700", emoji: "🟡" },
+  low:      { badge: "bg-green-100 text-green-700", emoji: "🟢" },
+};
+
+// ── Bug Report Modal ───────────────────────────────────────────────────────────
+
+function BugReportModal({ onClose }) {
+  const [form, setForm] = useState({
+    title: "", category: "booking", severity: "medium",
+    description: "", steps: "",
+    page_url: window.location.href, admin_tab: "", screenshots: [],
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null); // { github_issue_url }
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files).slice(0, 3 - form.screenshots.length);
+    try {
+      const compressed = await Promise.all(files.map(f => compressToBase64(f)));
+      setForm(p => ({ ...p, screenshots: [...p.screenshots, ...compressed].slice(0, 3) }));
+    } catch { toast.error("Image compression failed"); }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await api.post("/admin/bug-reports", form);
+      setResult(r.data);
+    } catch { toast.error("Failed to submit bug report"); }
+    finally { setSubmitting(false); }
+  }
+
+  if (result) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Check className="w-6 h-6 text-green-600" />
+          </div>
+          <h3 className="font-semibold text-espresso mb-1">Bug Report Submitted</h3>
+          {result.github_issue_url ? (
+            <p className="text-sm text-taupe mb-4">
+              GitHub issue created —{" "}
+              <a href={result.github_issue_url} target="_blank" rel="noopener noreferrer"
+                className="text-blue-600 underline inline-flex items-center gap-1">
+                View issue <ExternalLink className="w-3 h-3" />
+              </a>
+            </p>
+          ) : (
+            <p className="text-sm text-taupe mb-4">Saved to Bug Reports tab.</p>
+          )}
+          {result.github_sync_failed && (
+            <p className="text-xs text-amber-600 mb-3 bg-amber-50 rounded-lg px-3 py-2">
+              GitHub sync failed — retry from Bug Reports tab.
+            </p>
+          )}
+          <Button onClick={onClose} className="w-full rounded-full">Done</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-white rounded-t-2xl px-5 pt-5 pb-3 border-b border-stone-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bug className="w-5 h-5 text-red-500" />
+            <h2 className="font-semibold text-espresso">Report a Bug</h2>
+          </div>
+          <button onClick={onClose} className="text-taupe hover:text-espresso transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">What's broken? *</label>
+            <input required value={form.title}
+              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso"
+              placeholder="e.g. PIN field rejects valid codes on step 3" />
+          </div>
+
+          {/* Severity + Category */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-taupe mb-1 block">Severity *</label>
+              <select value={form.severity}
+                onChange={e => setForm(p => ({ ...p, severity: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso bg-white">
+                <option value="critical">🔴 Critical</option>
+                <option value="high">🟠 High</option>
+                <option value="medium">🟡 Medium</option>
+                <option value="low">🟢 Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-taupe mb-1 block">Category *</label>
+              <select value={form.category}
+                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso bg-white">
+                <option value="booking">Booking</option>
+                <option value="auth">Auth / Login</option>
+                <option value="beautician">Beautician</option>
+                <option value="ui">UI / Design</option>
+                <option value="payment">Payment</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Severity guide */}
+          <p className="text-[10px] text-taupe bg-stone-50 rounded-lg px-3 py-2">
+            <strong>Critical</strong> = site/app unusable · <strong>High</strong> = core feature broken ·{" "}
+            <strong>Medium</strong> = feature works but wrong · <strong>Low</strong> = minor / visual
+          </p>
+
+          {/* Description */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">Description *</label>
+            <textarea required value={form.description}
+              onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+              rows={3} placeholder="What happened? What did you expect?"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso resize-none" />
+          </div>
+
+          {/* Steps */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">Steps to reproduce (optional)</label>
+            <textarea value={form.steps}
+              onChange={e => setForm(p => ({ ...p, steps: e.target.value }))}
+              rows={2} placeholder={"1. Open booking\n2. Select area\n3. ..."}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso resize-none" />
+          </div>
+
+          {/* Screenshots */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-2 block">Screenshots — up to 3 (optional)</label>
+            <div className="flex gap-2 flex-wrap">
+              {form.screenshots.map((src, i) => (
+                <div key={i} className="relative">
+                  <img src={src} alt="" className="w-16 h-16 object-cover rounded-xl border border-stone-200" />
+                  <button type="button"
+                    onClick={() => setForm(p => ({ ...p, screenshots: p.screenshots.filter((_, j) => j !== i) }))}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center shadow">
+                    <X className="w-2.5 h-2.5 text-white" />
+                  </button>
+                </div>
+              ))}
+              {form.screenshots.length < 3 && (
+                <label className="w-16 h-16 border-2 border-dashed border-stone-300 rounded-xl flex items-center justify-center cursor-pointer hover:border-stone-400 transition-colors">
+                  <Plus className="w-5 h-5 text-stone-400" />
+                  <input type="file" accept="image/*" multiple className="sr-only" onChange={handleFiles} />
+                </label>
+              )}
+            </div>
+          </div>
+
+          {/* Auto-captured context */}
+          <div className="text-[10px] text-taupe/60 font-mono truncate">
+            Page: {form.page_url}
+          </div>
+
+          <Button type="submit" disabled={submitting}
+            className="w-full rounded-full bg-red-500 hover:bg-red-600 text-white">
+            {submitting
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
+              : <><Bug className="w-4 h-4 mr-2" />Submit Bug Report</>}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Feature Request Modal ──────────────────────────────────────────────────────
+
+function FeatureRequestModal({ onClose }) {
+  const [form, setForm] = useState({
+    title: "", category: "booking", priority: "useful",
+    use_case: "", details: "",
+    page_url: window.location.href, admin_tab: "", screenshots: [],
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files).slice(0, 3 - form.screenshots.length);
+    try {
+      const compressed = await Promise.all(files.map(f => compressToBase64(f)));
+      setForm(p => ({ ...p, screenshots: [...p.screenshots, ...compressed].slice(0, 3) }));
+    } catch { toast.error("Image compression failed"); }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await api.post("/admin/feature-requests", form);
+      setResult(r.data);
+    } catch { toast.error("Failed to submit feature request"); }
+    finally { setSubmitting(false); }
+  }
+
+  if (result) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+          <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <Check className="w-6 h-6 text-purple-600" />
+          </div>
+          <h3 className="font-semibold text-espresso mb-1">Feature Request Submitted</h3>
+          {result.github_issue_url ? (
+            <p className="text-sm text-taupe mb-4">
+              GitHub issue created —{" "}
+              <a href={result.github_issue_url} target="_blank" rel="noopener noreferrer"
+                className="text-blue-600 underline inline-flex items-center gap-1">
+                View issue <ExternalLink className="w-3 h-3" />
+              </a>
+            </p>
+          ) : (
+            <p className="text-sm text-taupe mb-4">Saved to Feature Requests tab.</p>
+          )}
+          {result.github_sync_failed && (
+            <p className="text-xs text-amber-600 mb-3 bg-amber-50 rounded-lg px-3 py-2">
+              GitHub sync failed — retry from Feature Requests tab.
+            </p>
+          )}
+          <Button onClick={onClose} className="w-full rounded-full">Done</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-white rounded-t-2xl px-5 pt-5 pb-3 border-b border-stone-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Star className="w-5 h-5 text-purple-500" />
+            <h2 className="font-semibold text-espresso">Request a Feature</h2>
+          </div>
+          <button onClick={onClose} className="text-taupe hover:text-espresso transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">Feature title *</label>
+            <input required value={form.title}
+              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso"
+              placeholder="e.g. Show booking history on beautician portal" />
+          </div>
+
+          {/* Priority + Category */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-taupe mb-1 block">Priority *</label>
+              <select value={form.priority}
+                onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso bg-white">
+                <option value="critical">🔴 Critical</option>
+                <option value="important">🟠 Important</option>
+                <option value="useful">🟡 Useful</option>
+                <option value="nice_to_have">🟢 Nice to Have</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-taupe mb-1 block">Category *</label>
+              <select value={form.category}
+                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso bg-white">
+                <option value="booking">Booking</option>
+                <option value="auth">Auth / Login</option>
+                <option value="beautician">Beautician</option>
+                <option value="ui">UI / Design</option>
+                <option value="payment">Payment</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Use case */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">Why is this needed? *</label>
+            <textarea required value={form.use_case}
+              onChange={e => setForm(p => ({ ...p, use_case: e.target.value }))}
+              rows={3} placeholder="What problem does this solve? Who benefits and how often?"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso resize-none" />
+          </div>
+
+          {/* Details */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-1 block">Additional details (optional)</label>
+            <textarea value={form.details}
+              onChange={e => setForm(p => ({ ...p, details: e.target.value }))}
+              rows={2} placeholder="How should it work? Any examples from other apps?"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-espresso resize-none" />
+          </div>
+
+          {/* Screenshots / Mockups */}
+          <div>
+            <label className="text-xs font-medium text-taupe mb-2 block">Screenshots or mockups — up to 3 (optional)</label>
+            <div className="flex gap-2 flex-wrap">
+              {form.screenshots.map((src, i) => (
+                <div key={i} className="relative">
+                  <img src={src} alt="" className="w-16 h-16 object-cover rounded-xl border border-stone-200" />
+                  <button type="button"
+                    onClick={() => setForm(p => ({ ...p, screenshots: p.screenshots.filter((_, j) => j !== i) }))}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center shadow">
+                    <X className="w-2.5 h-2.5 text-white" />
+                  </button>
+                </div>
+              ))}
+              {form.screenshots.length < 3 && (
+                <label className="w-16 h-16 border-2 border-dashed border-stone-300 rounded-xl flex items-center justify-center cursor-pointer hover:border-stone-400 transition-colors">
+                  <Plus className="w-5 h-5 text-stone-400" />
+                  <input type="file" accept="image/*" multiple className="sr-only" onChange={handleFiles} />
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-taupe/60 font-mono truncate">Page: {form.page_url}</div>
+
+          <Button type="submit" disabled={submitting}
+            className="w-full rounded-full bg-purple-600 hover:bg-purple-700 text-white">
+            {submitting
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Submitting…</>
+              : <><Star className="w-4 h-4 mr-2" />Submit Feature Request</>}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Floating Action Button (Bug + Feature) ────────────────────────────────────
+
+function BugReportButton() {
+  const [expanded, setExpanded] = useState(false);
+  const [mode, setMode] = useState(null); // "bug" | "feature"
+
+  function open(m) { setMode(m); setExpanded(false); }
+  function close() { setMode(null); }
+
+  return (
+    <>
+      {/* Expanded menu */}
+      {expanded && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setExpanded(false)} />
+          <div className="fixed bottom-20 right-6 z-40 flex flex-col gap-2 items-end">
+            <button onClick={() => open("feature")}
+              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium px-4 py-2.5 rounded-full shadow-lg transition-colors">
+              <Star className="w-4 h-4" /> Request Feature
+            </button>
+            <button onClick={() => open("bug")}
+              className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-xs font-medium px-4 py-2.5 rounded-full shadow-lg transition-colors">
+              <Bug className="w-4 h-4" /> Report Bug
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* FAB toggle */}
+      <button
+        onClick={() => setExpanded(e => !e)}
+        title="Report Bug or Request Feature"
+        className={`fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all ${
+          expanded ? "bg-espresso rotate-45" : "bg-espresso hover:bg-espresso/90"
+        } text-ivory`}
+      >
+        <Plus className="w-5 h-5" />
+      </button>
+
+      {mode === "bug"     && <BugReportModal onClose={close} />}
+      {mode === "feature" && <FeatureRequestModal onClose={close} />}
+    </>
+  );
+}
+
+// ── Feature Requests Tab ──────────────────────────────────────────────────────
+
+const FR_STATUSES = [
+  { value: "new",                label: "New",                color: "bg-blue-100 text-blue-700" },
+  { value: "under_consideration",label: "Under Consideration",color: "bg-purple-100 text-purple-700" },
+  { value: "planned",            label: "Planned",            color: "bg-indigo-100 text-indigo-700" },
+  { value: "in_progress",        label: "In Progress",        color: "bg-amber-100 text-amber-700" },
+  { value: "shipped",            label: "Shipped",            color: "bg-green-100 text-green-700" },
+  { value: "declined",           label: "Declined",           color: "bg-stone-100 text-stone-600" },
+];
+
+const PRIORITY_STYLES = {
+  critical:     { badge: "bg-red-100 text-red-700",    emoji: "🔴" },
+  important:    { badge: "bg-orange-100 text-orange-700", emoji: "🟠" },
+  useful:       { badge: "bg-amber-100 text-amber-700",  emoji: "🟡" },
+  nice_to_have: { badge: "bg-green-100 text-green-700",  emoji: "🟢" },
+};
+
+function FeatureRequestsTab() {
+  const qc = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState("new");
+  const [selected, setSelected] = useState(null);
+  const [detailFR, setDetailFR] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [devNotes, setDevNotes] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [preview, setPreview] = useState(null);
+
+  const filterOptions = [
+    { value: "new",                 label: "New" },
+    { value: "under_consideration", label: "Considering" },
+    { value: "planned",             label: "Planned" },
+    { value: "in_progress",         label: "In Progress" },
+    { value: "shipped",             label: "Shipped" },
+    { value: "declined",            label: "Declined" },
+    { value: "",                    label: "All" },
+  ];
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["feature-requests", statusFilter],
+    queryFn: () => {
+      const q = statusFilter ? `?status=${statusFilter}&limit=50` : "?limit=50";
+      return api.get(`/admin/feature-requests${q}`).then(r => r.data);
+    },
+  });
+
+  async function openDetail(fr) {
+    setSelected(fr._id);
+    setDevNotes(fr.dev_notes || "");
+    setLoadingDetail(true);
+    try {
+      const r = await api.get(`/admin/feature-requests/${fr._id}`);
+      setDetailFR(r.data);
+    } catch { toast.error("Failed to load feature request"); }
+    finally { setLoadingDetail(false); }
+  }
+
+  async function updateFR(updates) {
+    if (!selected) return;
+    setUpdating(true);
+    try {
+      await api.patch(`/admin/feature-requests/${selected}`, updates);
+      qc.invalidateQueries({ queryKey: ["feature-requests"] });
+      setDetailFR(f => ({ ...f, ...updates }));
+      toast.success("Updated");
+    } catch { toast.error("Update failed"); }
+    finally { setUpdating(false); }
+  }
+
+  async function retryGithub() {
+    if (!selected) return;
+    setRetrying(true);
+    try {
+      const r = await api.post(`/admin/feature-requests/${selected}/retry-github`, {});
+      setDetailFR(f => ({ ...f, github_issue_url: r.data.github_issue_url, github_sync_failed: false }));
+      toast.success("GitHub issue created");
+    } catch { toast.error("GitHub sync failed — check server env vars"); }
+    finally { setRetrying(false); }
+  }
+
+  const items = data?.items || [];
+
+  return (
+    <div className="flex gap-0 h-[calc(100vh-280px)] min-h-[400px]">
+      {/* Left: list */}
+      <div className="w-full sm:w-80 shrink-0 flex flex-col border-r border-stone-100">
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-100">
+          <div>
+            <h2 className="font-serif text-lg text-espresso">Feature Requests</h2>
+            <p className="text-[10px] text-taupe mt-0.5">{data?.total ?? 0} total</p>
+          </div>
+          <Button size="icon" variant="ghost" onClick={refetch} className="h-8 w-8 rounded-lg hover:bg-rosemist/60">
+            <RefreshCw className="w-3.5 h-3.5 text-taupe" />
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {filterOptions.map(f => (
+            <button key={f.value} onClick={() => { setStatusFilter(f.value); setSelected(null); setDetailFR(null); }}
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                statusFilter === f.value ? "bg-espresso text-ivory border-espresso" : "border-stone-200 text-taupe hover:text-espresso"
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {isLoading ? (
+            <p className="text-taupe text-xs py-6 text-center">Loading…</p>
+          ) : items.length === 0 ? (
+            <div className="py-10 text-center">
+              <Sparkles className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+              <p className="text-sm text-taupe">No {statusFilter ? statusFilter.replace(/_/g, " ") : ""} requests.</p>
+            </div>
+          ) : items.map(fr => {
+            const pri = PRIORITY_STYLES[fr.priority] || { badge: "bg-stone-100 text-stone-600", emoji: "⚪" };
+            const st = FR_STATUSES.find(s => s.value === fr.status) || { color: "bg-stone-100 text-stone-600", label: fr.status };
+            return (
+              <button key={fr._id} onClick={() => openDetail(fr)}
+                className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                  selected === fr._id ? "border-espresso bg-espresso/5" : "border-stone-100 hover:border-stone-200 bg-pearl"
+                }`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">{pri.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-espresso truncate">{fr.title}</p>
+                    <p className="text-[10px] text-taupe mt-0.5 capitalize">{fr.category} · {new Date(fr.reported_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${st.color}`}>{st.label}</span>
+                </div>
+                {fr.github_sync_failed && !fr.github_issue_url && (
+                  <p className="text-[9px] text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-2.5 h-2.5" /> GitHub sync failed
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: detail */}
+      <div className="flex-1 overflow-y-auto pl-5">
+        {!selected ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Sparkles className="w-10 h-10 text-stone-300 mb-3" />
+            <p className="text-sm text-taupe">Select a feature request to view details</p>
+          </div>
+        ) : loadingDetail ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 animate-spin text-taupe" />
+          </div>
+        ) : detailFR ? (
+          <div className="space-y-5">
+            <div>
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-espresso text-base">{detailFR.title}</h3>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {(() => {
+                      const pri = PRIORITY_STYLES[detailFR.priority] || { badge: "bg-stone-100 text-stone-600", emoji: "⚪" };
+                      const label = detailFR.priority ? detailFR.priority.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "";
+                      return (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${pri.badge}`}>
+                          {pri.emoji} {label}
+                        </span>
+                      );
+                    })()}
+                    <span className="text-[10px] text-taupe capitalize">{detailFR.category}</span>
+                    <span className="text-[10px] text-taupe">
+                      {new Date(detailFR.reported_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {detailFR.page_url && (
+                <p className="text-[10px] text-taupe/60 font-mono mt-1 truncate">{detailFR.page_url}</p>
+              )}
+              {detailFR.github_issue_url && (
+                <a href={detailFR.github_issue_url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">
+                  <ExternalLink className="w-3 h-3" /> View GitHub Issue
+                </a>
+              )}
+              {detailFR.github_sync_failed && !detailFR.github_issue_url && (
+                <button onClick={retryGithub} disabled={retrying}
+                  className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 mt-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {retrying ? "Retrying…" : "GitHub sync failed — retry"}
+                </button>
+              )}
+            </div>
+
+            <div>
+              <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-1">Use Case / Problem</p>
+              <p className="text-sm text-espresso whitespace-pre-wrap bg-stone-50 rounded-xl px-4 py-3">{detailFR.use_case}</p>
+            </div>
+
+            {detailFR.details && (
+              <div>
+                <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-1">Additional Details</p>
+                <p className="text-sm text-espresso whitespace-pre-wrap bg-stone-50 rounded-xl px-4 py-3">{detailFR.details}</p>
+              </div>
+            )}
+
+            {detailFR.screenshots?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-2">Screenshots / Mockups</p>
+                <div className="flex gap-2 flex-wrap">
+                  {detailFR.screenshots.map((src, i) => (
+                    <button key={i} onClick={() => setPreview(src)}
+                      className="w-24 h-20 rounded-xl overflow-hidden border border-stone-200 hover:ring-2 hover:ring-espresso/30 transition">
+                      <img src={src} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-stone-100 pt-4">
+              <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-2">Update Status</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {FR_STATUSES.map(s => (
+                  <button key={s.value} disabled={updating}
+                    onClick={() => updateFR({ status: s.value })}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+                      detailFR.status === s.value
+                        ? `${s.color} border-transparent font-medium`
+                        : "border-stone-200 text-taupe hover:text-espresso"
+                    }`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              <textarea value={devNotes} onChange={e => setDevNotes(e.target.value)} rows={2}
+                placeholder="Dev notes (approach, PR link, ETA…)"
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-espresso resize-none mb-3" />
+
+              <Button size="sm" disabled={updating}
+                onClick={() => updateFR({ dev_notes: devNotes || null })}
+                className="rounded-full text-xs h-8 px-4">
+                {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Notes"}
+              </Button>
+
+              {detailFR.shipped_at && (
+                <p className="text-[10px] text-green-600 mt-3">
+                  Shipped on {new Date(detailFR.shipped_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <AnimatePresence>
+        {preview && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setPreview(null)}>
+            <motion.img initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              src={preview} alt="Screenshot"
+              className="max-w-2xl max-h-[85vh] w-full object-contain rounded-2xl"
+              onClick={e => e.stopPropagation()} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Bug Reports Tab ────────────────────────────────────────────────────────────
+
+function BugReportsTab() {
+  const qc = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState("open");
+  const [selected, setSelected] = useState(null);
+  const [detailBug, setDetailBug] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [devNotes, setDevNotes] = useState("");
+  const [fixCommit, setFixCommit] = useState("");
+  const [updating, setUpdating] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [preview, setPreview] = useState(null);
+
+  const filterOptions = [
+    { value: "open",         label: "Open" },
+    { value: "acknowledged", label: "Acknowledged" },
+    { value: "in_progress",  label: "In Progress" },
+    { value: "resolved",     label: "Resolved" },
+    { value: "wont_fix",     label: "Won't Fix" },
+    { value: "",             label: "All" },
+  ];
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["bug-reports", statusFilter],
+    queryFn: () => {
+      const q = statusFilter ? `?status=${statusFilter}&limit=50` : "?limit=50";
+      return api.get(`/admin/bug-reports${q}`).then(r => r.data);
+    },
+  });
+
+  async function openDetail(bug) {
+    setSelected(bug._id);
+    setDevNotes(bug.dev_notes || "");
+    setFixCommit(bug.fix_commit || "");
+    setLoadingDetail(true);
+    try {
+      const r = await api.get(`/admin/bug-reports/${bug._id}`);
+      setDetailBug(r.data);
+    } catch { toast.error("Failed to load bug details"); }
+    finally { setLoadingDetail(false); }
+  }
+
+  async function updateBug(updates) {
+    if (!selected) return;
+    setUpdating(true);
+    try {
+      await api.patch(`/admin/bug-reports/${selected}`, updates);
+      qc.invalidateQueries({ queryKey: ["bug-reports"] });
+      setDetailBug(b => ({ ...b, ...updates }));
+      toast.success("Updated");
+    } catch { toast.error("Update failed"); }
+    finally { setUpdating(false); }
+  }
+
+  async function retryGithub() {
+    if (!selected) return;
+    setRetrying(true);
+    try {
+      const r = await api.post(`/admin/bug-reports/${selected}/retry-github`, {});
+      setDetailBug(b => ({ ...b, github_issue_url: r.data.github_issue_url, github_sync_failed: false }));
+      toast.success("GitHub issue created");
+    } catch { toast.error("GitHub sync failed — check server env vars"); }
+    finally { setRetrying(false); }
+  }
+
+  const items = data?.items || [];
+
+  return (
+    <div className="flex gap-0 h-[calc(100vh-280px)] min-h-[400px]">
+      {/* Left: list */}
+      <div className="w-full sm:w-80 shrink-0 flex flex-col border-r border-stone-100">
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-100">
+          <div>
+            <h2 className="font-serif text-lg text-espresso">Bug Reports</h2>
+            <p className="text-[10px] text-taupe mt-0.5">{data?.total ?? 0} total</p>
+          </div>
+          <Button size="icon" variant="ghost" onClick={refetch} className="h-8 w-8 rounded-lg hover:bg-rosemist/60">
+            <RefreshCw className="w-3.5 h-3.5 text-taupe" />
+          </Button>
+        </div>
+
+        {/* Status filter pills */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {filterOptions.map(f => (
+            <button key={f.value} onClick={() => { setStatusFilter(f.value); setSelected(null); setDetailBug(null); }}
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                statusFilter === f.value ? "bg-espresso text-ivory border-espresso" : "border-stone-200 text-taupe hover:text-espresso"
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Bug list */}
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {isLoading ? (
+            <p className="text-taupe text-xs py-6 text-center">Loading…</p>
+          ) : items.length === 0 ? (
+            <div className="py-10 text-center">
+              <Check className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <p className="text-sm text-taupe">No {statusFilter.replace("_", " ")} bugs.</p>
+            </div>
+          ) : items.map(bug => {
+            const sev = SEVERITY_STYLES[bug.severity] || { badge: "bg-stone-100 text-stone-600", emoji: "⚪" };
+            const st = BUG_STATUSES.find(s => s.value === bug.status) || { color: "bg-stone-100 text-stone-600", label: bug.status };
+            return (
+              <button key={bug._id} onClick={() => openDetail(bug)}
+                className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                  selected === bug._id ? "border-espresso bg-espresso/5" : "border-stone-100 hover:border-stone-200 bg-pearl"
+                }`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">{sev.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-espresso truncate">{bug.title}</p>
+                    <p className="text-[10px] text-taupe mt-0.5 capitalize">{bug.category} · {new Date(bug.reported_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${st.color}`}>{st.label}</span>
+                </div>
+                {bug.github_sync_failed && !bug.github_issue_url && (
+                  <p className="text-[9px] text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-2.5 h-2.5" /> GitHub sync failed
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: detail */}
+      <div className="flex-1 overflow-y-auto pl-5">
+        {!selected ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Bug className="w-10 h-10 text-stone-300 mb-3" />
+            <p className="text-sm text-taupe">Select a bug report to view details</p>
+          </div>
+        ) : loadingDetail ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="w-6 h-6 animate-spin text-taupe" />
+          </div>
+        ) : detailBug ? (
+          <div className="space-y-5">
+            {/* Header */}
+            <div>
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-espresso text-base">{detailBug.title}</h3>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {(() => {
+                      const sev = SEVERITY_STYLES[detailBug.severity] || { badge: "bg-stone-100 text-stone-600", emoji: "⚪" };
+                      const label = detailBug.severity ? detailBug.severity[0].toUpperCase() + detailBug.severity.slice(1) : "";
+                      return (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${sev.badge}`}>
+                          {sev.emoji} {label}
+                        </span>
+                      );
+                    })()}
+                    <span className="text-[10px] text-taupe capitalize">{detailBug.category}</span>
+                    <span className="text-[10px] text-taupe">
+                      {new Date(detailBug.reported_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {detailBug.page_url && (
+                <p className="text-[10px] text-taupe/60 font-mono mt-1 truncate">{detailBug.page_url}</p>
+              )}
+              {detailBug.github_issue_url && (
+                <a href={detailBug.github_issue_url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">
+                  <ExternalLink className="w-3 h-3" /> View GitHub Issue
+                </a>
+              )}
+              {detailBug.github_sync_failed && !detailBug.github_issue_url && (
+                <button onClick={retryGithub} disabled={retrying}
+                  className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 mt-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {retrying ? "Retrying…" : "GitHub sync failed — retry"}
+                </button>
+              )}
+            </div>
+
+            {/* Description */}
+            <div>
+              <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-1">Description</p>
+              <p className="text-sm text-espresso whitespace-pre-wrap bg-stone-50 rounded-xl px-4 py-3">{detailBug.description}</p>
+            </div>
+
+            {/* Steps */}
+            {detailBug.steps && (
+              <div>
+                <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-1">Steps to Reproduce</p>
+                <p className="text-sm text-espresso whitespace-pre-wrap bg-stone-50 rounded-xl px-4 py-3">{detailBug.steps}</p>
+              </div>
+            )}
+
+            {/* Screenshots */}
+            {detailBug.screenshots?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-2">Screenshots</p>
+                <div className="flex gap-2 flex-wrap">
+                  {detailBug.screenshots.map((src, i) => (
+                    <button key={i} onClick={() => setPreview(src)}
+                      className="w-24 h-20 rounded-xl overflow-hidden border border-stone-200 hover:ring-2 hover:ring-espresso/30 transition">
+                      <img src={src} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Status update */}
+            <div className="border-t border-stone-100 pt-4">
+              <p className="text-[10px] font-medium text-taupe uppercase tracking-wide mb-2">Update Status</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {BUG_STATUSES.map(s => (
+                  <button key={s.value} disabled={updating}
+                    onClick={() => updateBug({ status: s.value })}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+                      detailBug.status === s.value
+                        ? `${s.color} border-transparent font-medium`
+                        : "border-stone-200 text-taupe hover:text-espresso"
+                    }`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Dev notes */}
+              <textarea value={devNotes} onChange={e => setDevNotes(e.target.value)} rows={2}
+                placeholder="Dev notes (root cause, workaround, PR link…)"
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-espresso resize-none mb-2" />
+
+              {/* Fix commit */}
+              <input value={fixCommit} onChange={e => setFixCommit(e.target.value)}
+                placeholder="Fix commit SHA (optional)"
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-espresso mb-3" />
+
+              <Button size="sm" disabled={updating}
+                onClick={() => updateBug({ dev_notes: devNotes || null, fix_commit: fixCommit || null })}
+                className="rounded-full text-xs h-8 px-4">
+                {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Notes"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Screenshot lightbox */}
+      <AnimatePresence>
+        {preview && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setPreview(null)}>
+            <motion.img initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              src={preview} alt="Screenshot"
+              className="max-w-2xl max-h-[85vh] w-full object-contain rounded-2xl"
+              onClick={e => e.stopPropagation()} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ── Main Admin Page ───────────────────────────────────────────────────────────
 export default function Admin() {
   const { user, isLoggedIn } = useAuth();
@@ -1309,6 +2268,8 @@ export default function Admin() {
     { id: "bookings",     label: "Svc Bookings",     Icon: Scissors },
     { id: "beauticians",  label: "Beauticians",      Icon: UserCheck },
     { id: "applications", label: "Applications",     Icon: ClipboardList },
+    { id: "bugs",         label: "Bug Reports",       Icon: Bug },
+    { id: "features",     label: "Features",          Icon: Sparkles },
   ];
 
   return (
@@ -1338,9 +2299,12 @@ export default function Admin() {
           {tab === "bookings"     && <BookingsTab />}
           {tab === "beauticians"  && <BeauticiansTab />}
           {tab === "applications" && <ApplicationsTab />}
+          {tab === "bugs"         && <BugReportsTab />}
+          {tab === "features"     && <FeatureRequestsTab />}
         </motion.div>
       </main>
       <Footer />
+      <BugReportButton />
     </div>
   );
 }

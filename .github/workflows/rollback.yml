@@ -1,0 +1,65 @@
+name: Rollback to Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Git commit SHA to roll back to (7 chars, e.g. abc1234). Find in GitHub Actions deploy logs or git log.'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Set lowercase image prefix
+        run: |
+          PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "IMAGE_PREFIX=${PREFIX}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: ssh-keyscan -H ${{ secrets.HETZNER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback on server
+        run: |
+          SHA="${{ inputs.sha }}"
+          IMAGE_PREFIX="${{ env.IMAGE_PREFIX }}"
+          ssh ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }} bash -s << ENDSSH
+            set -e
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+
+            echo "Rolling back to sha-${SHA} ..."
+            docker pull ${IMAGE_PREFIX}/backend:sha-${SHA}
+            docker pull ${IMAGE_PREFIX}/proxy:sha-${SHA}
+
+            # Re-tag pulled images as latest so docker-compose picks them up without rebuild
+            docker tag ${IMAGE_PREFIX}/backend:sha-${SHA} ${IMAGE_PREFIX}/backend:latest
+            docker tag ${IMAGE_PREFIX}/proxy:sha-${SHA} ${IMAGE_PREFIX}/proxy:latest
+
+            cd /opt/ziyanisa
+            export IMAGE_PREFIX="${IMAGE_PREFIX}"
+            docker compose up -d --no-build proxy backend
+
+            echo "${SHA}" > /opt/ziyanisa/.last_deployed_sha
+            echo "Rollback to ${SHA} complete at \$(date)"
+          ENDSSH
