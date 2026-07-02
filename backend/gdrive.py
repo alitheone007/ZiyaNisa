@@ -14,24 +14,33 @@ import os
 
 log = logging.getLogger("gdrive")
 
-GDRIVE_SA_JSON   = os.environ.get("GDRIVE_SA_JSON", "")
+GDRIVE_SA_FILE   = os.environ.get("GDRIVE_SA_FILE", "")   # path to JSON key file (preferred)
+GDRIVE_SA_JSON   = os.environ.get("GDRIVE_SA_JSON", "")   # fallback: raw JSON string in env
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "")
 
 
-def _upload_sync(filename: str, data: bytes, mime_type: str) -> str:
-    if not GDRIVE_SA_JSON:
-        raise RuntimeError(
-            "GDRIVE_SA_JSON not set — add service account JSON to server .env"
-        )
-
+def _load_creds():
     from google.oauth2.service_account import Credentials
+    if GDRIVE_SA_FILE and os.path.exists(GDRIVE_SA_FILE):
+        with open(GDRIVE_SA_FILE) as f:
+            info = json.load(f)
+    elif GDRIVE_SA_JSON:
+        info = json.loads(GDRIVE_SA_JSON)
+    else:
+        raise RuntimeError(
+            "Google Drive not configured — set GDRIVE_SA_FILE (path to key JSON) "
+            "or GDRIVE_SA_JSON (raw JSON string) in server .env"
+        )
+    return Credentials.from_service_account_info(
+        info, scopes=["https://www.googleapis.com/auth/drive.file"]
+    )
+
+
+def _upload_sync(filename: str, data: bytes, mime_type: str) -> str:
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseUpload
 
-    creds = Credentials.from_service_account_info(
-        json.loads(GDRIVE_SA_JSON),
-        scopes=["https://www.googleapis.com/auth/drive.file"],
-    )
+    creds = _load_creds()
     service = build("drive", "v3", credentials=creds, cache_discovery=False)
 
     meta: dict = {"name": filename}
