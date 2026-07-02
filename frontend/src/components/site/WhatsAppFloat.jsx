@@ -1,9 +1,15 @@
 import { motion } from "framer-motion";
+import { useLocation } from "react-router-dom";
 
 const WA_NUMBER = process.env.REACT_APP_WA_NUMBER || "918341372666";
 const WA_MSG    = encodeURIComponent("Hi ZiyaNisa! I need help with my order.");
 
+const HIDE_ON = ["/admin", "/duty", "/beautician/apply"];
+
 export default function WhatsAppFloat() {
+  const { pathname } = useLocation();
+  if (HIDE_ON.some(p => pathname.startsWith(p))) return null;
+
   return (
     <motion.a
       href={`https://wa.me/${WA_NUMBER}?text=${WA_MSG}`}

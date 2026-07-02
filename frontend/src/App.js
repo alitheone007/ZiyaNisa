@@ -54,9 +54,9 @@ function App() {
                   <Route path="/beautician/apply"  element={<BeauticianApply />} />
                 </Routes>
                 <CompareBar />
+                <WhatsAppFloat />
               </BrowserRouter>
               <Toaster richColors position="top-center" />
-              <WhatsAppFloat />
             </div>
           </CompareProvider>
         </WishlistProvider>
