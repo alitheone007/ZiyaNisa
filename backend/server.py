@@ -64,6 +64,26 @@ GITHUB_REPO   = os.environ.get("GITHUB_REPO", "")   # e.g. "alitheone007/ziyanis
 # In-memory OTP store: { contact → { otp, expires } }
 OTP_STORE: dict = {}
 
+# OTP rate-limit store: { contact → [send_timestamps] }
+# Limits to 5 OTP sends per contact per hour to prevent SMS quota exhaustion.
+OTP_RATE: dict = {}
+OTP_RATE_MAX   = 5    # max sends per window
+OTP_RATE_SECS  = 3600 # 1-hour rolling window
+
+def _otp_rate_check(contact: str) -> None:
+    """Raise 429 if this contact has hit the OTP rate limit."""
+    now  = datetime.now(timezone.utc)
+    hits = OTP_RATE.get(contact, [])
+    hits = [t for t in hits if (now - t).total_seconds() < OTP_RATE_SECS]
+    if len(hits) >= OTP_RATE_MAX:
+        wait = OTP_RATE_SECS - int((now - hits[0]).total_seconds())
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP requests. Please wait {wait // 60 + 1} minute(s) before trying again.",
+        )
+    hits.append(now)
+    OTP_RATE[contact] = hits
+
 def create_token(payload: dict) -> str:
     data = {**payload, "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)}
     return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -624,6 +644,11 @@ async def send_otp(payload: SendOtpInput):
     contact = payload.contact.strip()
     if not contact:
         raise HTTPException(status_code=400, detail="Contact (email or phone) is required")
+
+    # Rate-limit: max 5 OTP sends per contact per hour (skip in dev mode)
+    if not DEV_MODE:
+        _otp_rate_check(contact)
+
     otp = str(random.randint(100000, 999999))
     OTP_STORE[contact] = {"otp": otp, "expires": datetime.now(timezone.utc) + timedelta(minutes=10)}
 

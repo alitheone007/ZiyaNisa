@@ -5,25 +5,33 @@ const api = axios.create({
   timeout: 10000,
 });
 
-// Set the auth header synchronously from localStorage so the very first
-// API calls on page load (fired by useQuery before useEffect runs) are
-// authenticated. Without this, React renders + fires queries before
-// AuthContext's useEffect has a chance to set the header → 401 → logout.
+// ── Bootstrap auth header synchronously ──────────────────────────────────────
+// Set it from localStorage at module-load time so the very first API calls
+// (fired by React Query before useEffect runs) are already authenticated.
+// Without this, queries fire before AuthContext.useEffect → 401 → logout loop.
 const _t = localStorage.getItem("zn_token");
 if (_t) api.defaults.headers.common["Authorization"] = `Bearer ${_t}`;
 
-// On 401 (expired/invalid token), clear auth state and send to login.
-// Skip if we're already on an auth endpoint to avoid redirect loops.
+// ── 401 guardrail — soft expiry, NOT a hard redirect ─────────────────────────
+// A hard window.location redirect clears React state and forces an OTP even
+// when the user has a valid token that just wasn't sent on that one call.
+// Instead: clear stored credentials and fire a custom event so any mounted
+// UI can show a "session expired" prompt without losing the current page.
 api.interceptors.response.use(
   res => res,
   err => {
     const is401 = err.response?.status === 401;
     const isAuthEndpoint = err.config?.url?.includes("/auth/");
     if (is401 && !isAuthEndpoint) {
+      const hadToken = !!localStorage.getItem("zn_token");
       localStorage.removeItem("zn_token");
       localStorage.removeItem("zn_user");
       delete api.defaults.headers.common["Authorization"];
-      if (window.location.pathname !== "/login") {
+      // Only fire the event if the user was actually signed in — not on
+      // anonymous 401s (e.g. browsing a protected page while logged out).
+      if (hadToken) {
+        window.dispatchEvent(new CustomEvent("zn:session-expired"));
+      } else if (window.location.pathname !== "/login") {
         window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
       }
     }

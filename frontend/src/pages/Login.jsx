@@ -49,7 +49,8 @@ export default function Login() {
       }
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not send OTP. Try again.");
+      const msg = err.response?.data?.detail || "Could not send OTP. Try again.";
+      toast.error(msg, { duration: err.response?.status === 429 ? 8000 : 4000 });
     } finally {
       setLoading(false);
     }
@@ -97,8 +98,9 @@ export default function Login() {
       }
       toast.success("OTP resent");
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch {
-      toast.error("Could not resend OTP");
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Could not resend OTP";
+      toast.error(msg, { duration: err.response?.status === 429 ? 8000 : 4000 });
     } finally {
       setLoading(false);
     }
