@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Scissors, Loader2, CheckCircle2, XCircle, TrendingUp,
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const SKILL_NAMES = {
   s1: "Korean Glow Facial", s2: "Saffron Cleanup", s3: "Bridal Makeup",
@@ -17,6 +18,7 @@ const SKILL_NAMES = {
 
 export default function BeauticianPortal() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [phone, setPhone] = useState("");
   const [profile, setProfile] = useState(null);
   const [application, setApplication] = useState(null); // null | {status, rejection_reason, ...}
@@ -24,10 +26,7 @@ export default function BeauticianPortal() {
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(false);
 
-  async function handleLookup(e) {
-    e.preventDefault();
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length < 10) { toast.error("Enter a valid 10-digit mobile number"); return; }
+  async function doLookup(digits) {
     setLoading(true);
     try {
       const [profRes, surgeRes] = await Promise.all([
@@ -39,7 +38,6 @@ export default function BeauticianPortal() {
       setSurgeZones(surgeRes.data || []);
     } catch (err) {
       if (err.response?.status === 404) {
-        // Check if they have a pending application
         try {
           const appRes = await api.get(`/beauticians/application-status?phone=${digits}`);
           setApplication(appRes.data);
@@ -53,6 +51,22 @@ export default function BeauticianPortal() {
       setLoading(false);
     }
   }
+
+  async function handleLookup(e) {
+    e.preventDefault();
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) { toast.error("Enter a valid 10-digit mobile number"); return; }
+    await doLookup(digits);
+  }
+
+  // Auto-load profile for logged-in users so refresh doesn't reset the page
+  useEffect(() => {
+    if (!user?.contact || user.contact.includes("@")) return;
+    const digits = user.contact.replace(/\D/g, "").slice(-10);
+    if (digits.length < 10) return;
+    setPhone(digits);
+    doLookup(digits);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleDutyToggle(newStatus) {
     setToggling(true);

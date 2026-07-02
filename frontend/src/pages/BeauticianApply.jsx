@@ -1,13 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Scissors, ArrowRight, ArrowLeft, CheckCircle2, Loader2,
   Camera, Upload, User, Phone, Mail, MapPin, Briefcase, Star,
+  ClipboardList, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const HYD_AREAS = [
   "Banjara Hills","Jubilee Hills","Madhapur","Hitech City","Gachibowli","Kondapur",
@@ -61,12 +63,40 @@ function compressToBase64(file, maxWidth = 800, quality = 0.75) {
 
 export default function BeauticianApply() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Determine if we need an initial status check before showing the form
+  const sessionPhone = user?.contact && !user.contact.includes("@")
+    ? user.contact.replace(/\D/g, "").slice(-10)
+    : null;
+
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => ({
+    ...EMPTY,
+    phone: sessionPhone || "",
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [statusChecking, setStatusChecking] = useState(!!sessionPhone);
+  const [existingStatus, setExistingStatus] = useState(null);
   const selfieRef = useRef();
   const idProofRef = useRef();
+
+  // On mount: if logged-in beautician, check whether they already have an application
+  useEffect(() => {
+    if (!sessionPhone) return;
+    api.get(`/beauticians/profile?phone=${sessionPhone}`)
+      .then(() => navigate("/duty", { replace: true }))
+      .catch(async (err) => {
+        if (err.response?.status === 404) {
+          try {
+            const { data } = await api.get(`/beauticians/application-status?phone=${sessionPhone}`);
+            if (data.status && data.status !== "none") setExistingStatus(data);
+          } catch { /* no application — show form normally */ }
+        }
+        setStatusChecking(false);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setField(k, v) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -130,6 +160,66 @@ export default function BeauticianApply() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (statusChecking) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gold" />
+      </div>
+    );
+  }
+
+  if (existingStatus?.status === "pending_review") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white flex flex-col items-center justify-center px-5 text-center">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="w-20 h-20 rounded-full bg-amber-500/15 border border-amber-400/30 grid place-items-center mx-auto mb-5">
+            <ClipboardList className="w-9 h-9 text-amber-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">Application Under Review</h2>
+          <p className="text-sm text-white/50 mb-6 leading-relaxed">
+            Our team is reviewing your documents. This usually takes 2–3 business days.
+            We'll notify you once a decision is made.
+          </p>
+          <div className="bg-amber-500/10 border border-amber-400/20 rounded-2xl p-4 text-left text-xs text-amber-200/70 space-y-1.5 mb-6 max-w-xs mx-auto">
+            {existingStatus.name && <p><strong className="text-amber-300">Name:</strong> {existingStatus.name}</p>}
+            {existingStatus.area && <p><strong className="text-amber-300">Area:</strong> {existingStatus.area}</p>}
+            <p><strong className="text-amber-300">Status:</strong> Pending Review</p>
+          </div>
+          <button onClick={() => navigate("/duty")}
+            className="rounded-full bg-gold text-espresso font-semibold h-11 px-6 inline-flex items-center hover:bg-gold/90 text-sm">
+            Go to Beautician Portal
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (existingStatus?.status === "rejected") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white flex flex-col items-center justify-center px-5 text-center">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="w-20 h-20 rounded-full bg-red-500/15 border border-red-400/30 grid place-items-center mx-auto mb-5">
+            <AlertCircle className="w-9 h-9 text-red-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">Previous Application Not Approved</h2>
+          {existingStatus.rejection_reason && (
+            <div className="bg-red-500/10 border border-red-400/20 rounded-2xl p-4 mb-5 text-left max-w-xs mx-auto">
+              <p className="text-xs text-red-300/70 uppercase tracking-widest mb-1">Reason</p>
+              <p className="text-sm text-white/70">{existingStatus.rejection_reason}</p>
+            </div>
+          )}
+          <p className="text-sm text-white/50 mb-6">
+            You can re-apply with updated documents. Your phone number will be pre-filled.
+          </p>
+          <button onClick={() => setExistingStatus(null)}
+            className="rounded-full bg-gold text-espresso font-semibold h-11 px-6 inline-flex items-center hover:bg-gold/90 text-sm">
+            Re-apply Now
+          </button>
+        </motion.div>
+      </div>
+    );
   }
 
   if (submitted) {
