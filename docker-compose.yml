@@ -27,6 +27,8 @@ services:
     container_name: ziyanisa-backend
     restart: unless-stopped
     env_file: ./backend/.env
+    volumes:
+      - /opt/ziyanisa/gdrive-sa.json:/app/gdrive-sa.json:ro
     depends_on:
       - mongodb
     networks:
