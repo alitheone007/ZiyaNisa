@@ -1330,6 +1330,8 @@ function BugReportModal({ onClose }) {
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files).slice(0, 3 - form.screenshots.length);
+    const oversized = files.find(f => f.size > 15 * 1024 * 1024);
+    if (oversized) { toast.error("Each screenshot must be under 15 MB"); return; }
     try {
       const compressed = await Promise.all(files.map(f => compressToBase64(f)));
       setForm(p => ({ ...p, screenshots: [...p.screenshots, ...compressed].slice(0, 3) }));
@@ -1504,6 +1506,8 @@ function FeatureRequestModal({ onClose }) {
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files).slice(0, 3 - form.screenshots.length);
+    const oversized = files.find(f => f.size > 15 * 1024 * 1024);
+    if (oversized) { toast.error("Each screenshot must be under 15 MB"); return; }
     try {
       const compressed = await Promise.all(files.map(f => compressToBase64(f)));
       setForm(p => ({ ...p, screenshots: [...p.screenshots, ...compressed].slice(0, 3) }));
@@ -1724,6 +1728,7 @@ function FeatureRequestsTab() {
   const [statusFilter, setStatusFilter] = useState("new");
   const [selected, setSelected] = useState(null);
   const [detailFR, setDetailFR] = useState(null);
+  const [detailError, setDetailError] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [devNotes, setDevNotes] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -1740,7 +1745,7 @@ function FeatureRequestsTab() {
     { value: "",                    label: "All" },
   ];
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["feature-requests", statusFilter],
     queryFn: () => {
       const q = statusFilter ? `?status=${statusFilter}&limit=50` : "?limit=50";
@@ -1750,12 +1755,17 @@ function FeatureRequestsTab() {
 
   async function openDetail(fr) {
     setSelected(fr._id);
+    setDetailFR(null);
+    setDetailError(false);
     setDevNotes(fr.dev_notes || "");
     setLoadingDetail(true);
     try {
       const r = await api.get(`/admin/feature-requests/${fr._id}`);
       setDetailFR(r.data);
-    } catch { toast.error("Failed to load feature request"); }
+    } catch {
+      toast.error("Failed to load feature request");
+      setDetailError(true);
+    }
     finally { setLoadingDetail(false); }
   }
 
@@ -1812,6 +1822,12 @@ function FeatureRequestsTab() {
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {isLoading ? (
             <p className="text-taupe text-xs py-6 text-center">Loading…</p>
+          ) : isError ? (
+            <div className="py-10 text-center">
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-sm text-taupe mb-2">Failed to load feature requests.</p>
+              <button onClick={refetch} className="text-xs text-espresso underline">Retry</button>
+            </div>
           ) : items.length === 0 ? (
             <div className="py-10 text-center">
               <Sparkles className="w-8 h-8 text-stone-300 mx-auto mb-2" />
@@ -1854,6 +1870,13 @@ function FeatureRequestsTab() {
         ) : loadingDetail ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-taupe" />
+          </div>
+        ) : detailError ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+            <p className="text-sm text-taupe mb-2">Failed to load feature request details.</p>
+            <button onClick={() => { setSelected(null); setDetailError(false); }}
+              className="text-xs text-espresso underline">Go back</button>
           </div>
         ) : detailFR ? (
           <div className="space-y-5">
@@ -1981,6 +2004,7 @@ function BugReportsTab() {
   const [statusFilter, setStatusFilter] = useState("open");
   const [selected, setSelected] = useState(null);
   const [detailBug, setDetailBug] = useState(null);
+  const [detailError, setDetailError] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [devNotes, setDevNotes] = useState("");
   const [fixCommit, setFixCommit] = useState("");
@@ -1997,7 +2021,7 @@ function BugReportsTab() {
     { value: "",             label: "All" },
   ];
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["bug-reports", statusFilter],
     queryFn: () => {
       const q = statusFilter ? `?status=${statusFilter}&limit=50` : "?limit=50";
@@ -2007,13 +2031,18 @@ function BugReportsTab() {
 
   async function openDetail(bug) {
     setSelected(bug._id);
+    setDetailBug(null);
+    setDetailError(false);
     setDevNotes(bug.dev_notes || "");
     setFixCommit(bug.fix_commit || "");
     setLoadingDetail(true);
     try {
       const r = await api.get(`/admin/bug-reports/${bug._id}`);
       setDetailBug(r.data);
-    } catch { toast.error("Failed to load bug details"); }
+    } catch {
+      toast.error("Failed to load bug details");
+      setDetailError(true);
+    }
     finally { setLoadingDetail(false); }
   }
 
@@ -2072,6 +2101,12 @@ function BugReportsTab() {
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {isLoading ? (
             <p className="text-taupe text-xs py-6 text-center">Loading…</p>
+          ) : isError ? (
+            <div className="py-10 text-center">
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-sm text-taupe mb-2">Failed to load bug reports.</p>
+              <button onClick={refetch} className="text-xs text-espresso underline">Retry</button>
+            </div>
           ) : items.length === 0 ? (
             <div className="py-10 text-center">
               <Check className="w-8 h-8 text-green-400 mx-auto mb-2" />
@@ -2114,6 +2149,13 @@ function BugReportsTab() {
         ) : loadingDetail ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 animate-spin text-taupe" />
+          </div>
+        ) : detailError ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+            <p className="text-sm text-taupe mb-2">Failed to load bug details.</p>
+            <button onClick={() => { setSelected(null); setDetailError(false); }}
+              className="text-xs text-espresso underline">Go back</button>
           </div>
         ) : detailBug ? (
           <div className="space-y-5">
