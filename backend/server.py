@@ -3,6 +3,7 @@ ZiyaNisa — FastAPI backend.
 """
 
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Header, File, UploadFile, Form
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -39,6 +40,9 @@ db = client[os.environ["DB_NAME"]]
 
 app = FastAPI(title="ZiyaNisa API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
+
+UPLOADS_DIR = Path("/app/uploads")
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Auth config ───────────────────────────────────────────────────────────────
 JWT_SECRET = os.environ.get("JWT_SECRET", "ziya-nisa-dev-secret-change-in-prod")
@@ -1100,9 +1104,7 @@ async def toggle_stock(product_id: str, body: dict, authorization: Optional[str]
     return {"id": product_id, "in_stock": in_stock}
 
 
-# ── Admin — Image upload (Google Drive) ───────────────────────────────────────
-
-import gdrive as _gdrive
+# ── Admin — Image upload (local storage, served at /api/uploads/) ─────────────
 
 @api_router.post("/admin/upload-image")
 async def admin_upload_image(
@@ -1115,15 +1117,12 @@ async def admin_upload_image(
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large — max 10 MB")
-    mime = file.content_type or "image/jpeg"
-    try:
-        url = await _gdrive.upload_image(file.filename or "image.jpg", data, mime)
-        return {"url": url}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        logging.error("Drive upload failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Upload failed — check server logs")
+    ext = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower()
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        ext = "jpg"
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    (UPLOADS_DIR / filename).write_bytes(data)
+    return {"url": f"/api/uploads/{filename}"}
 
 
 # ── Admin — Analytics ──────────────────────────────────────────────────────────
@@ -2423,6 +2422,7 @@ async def retry_feature_request_github(fr_id: str, authorization: Optional[str] 
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 app.include_router(api_router)
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

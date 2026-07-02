@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     env_file: ./backend/.env
     volumes:
-      - /opt/ziyanisa/gdrive-sa.json:/app/gdrive-sa.json:ro
+      - uploads_data:/app/uploads
     depends_on:
       - mongodb
     networks:
@@ -109,3 +109,4 @@ networks:
 volumes:
   mongo_data:
   n8n_data:
+  uploads_data:
