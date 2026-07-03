@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, Copy, ArrowLeft, Smartphone, AlertCircle, MapPin,
   Tag, Sparkles, X, Home, Briefcase, MapPinned, RotateCcw,
-  Upload, Loader2, XCircle, ShieldCheck,
+  Upload, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ const INDIA_STATES = [
   "Delhi","Jammu & Kashmir","Ladakh","Puducherry","Chandigarh",
 ];
 
-const STEP_LABELS = ["Review", "Delivery", "Pay via UPI", "Confirm"];
+const STEP_LABELS = ["Review", "Delivery", "Pay via UPI", "Confirm Order"];
 
 const LABEL_ICON = { Home, Work: Briefcase, Other: MapPinned };
 
@@ -172,12 +172,10 @@ export default function Checkout() {
   const [orderId,    setOrderId]    = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Payment verification state
-  const [txnId,           setTxnId]           = useState("");
-  const [screenshot,      setScreenshot]      = useState(null);
+  // Payment confirmation state
+  const [txnId,             setTxnId]             = useState("");
+  const [screenshot,        setScreenshot]        = useState(null);
   const [screenshotPreview, setScreenshotPreview] = useState(null);
-  const [verifyStatus,    setVerifyStatus]    = useState(null); // null | 'checking' | 'verified' | 'rejected'
-  const [verifyResult,    setVerifyResult]    = useState(null);
 
   // Coupon
   const [coupon, setCoupon] = useState(null);
@@ -272,36 +270,20 @@ export default function Checkout() {
     }
   }
 
-  async function handleVerify() {
-    if (!txnId.trim()) { toast.error("Please enter your Transaction ID"); return; }
-    if (!screenshot)   { toast.error("Please upload your payment screenshot"); return; }
-    setVerifyStatus("checking");
-    setVerifyResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("transaction_id", txnId.trim());
-      fd.append("amount", String(grandTotal));
-      fd.append("screenshot", screenshot);
-      const res = await api.post("/payments/verify", fd);
-      setVerifyResult(res.data);
-      if (res.data.verified) {
-        setVerifyStatus("verified");
-        toast.success("Payment verified!");
-      } else {
-        setVerifyStatus("rejected");
-        toast.error(res.data.reason || "Verification failed");
-      }
-    } catch (err) {
-      const msg = err?.response?.data?.detail || "Verification failed. Please try again.";
-      setVerifyStatus("rejected");
-      setVerifyResult({ verified: false, reason: msg });
-      toast.error(msg);
-    }
-  }
-
   async function handleConfirm() {
+    if (!txnId.trim()) { toast.error("Please enter your UPI Transaction / UTR ID"); return; }
     setSubmitting(true);
     try {
+      // Upload screenshot in background if provided (for admin manual review)
+      if (screenshot) {
+        try {
+          const fd = new FormData();
+          fd.append("transaction_id", txnId.trim());
+          fd.append("amount", String(Math.round(grandTotal)));
+          fd.append("screenshot", screenshot);
+          await api.post("/payments/verify", fd);
+        } catch { /* non-blocking — admin can verify manually */ }
+      }
       await api.patch(`/orders/${orderId}/confirm`, { upi_ref: txnId.trim() });
       clearCart();
       setStep(4);
@@ -547,12 +529,12 @@ export default function Checkout() {
               </motion.div>
             )}
 
-            {/* ── Step 3: Verify & Confirm ── */}
+            {/* ── Step 3: Confirm ── */}
             {step === 3 && (
               <motion.div key="confirm" initial={{ opacity:0,y:16 }} animate={{ opacity:1,y:0 }} exit={{ opacity:0,y:-16 }}>
-                <h1 className="font-serif text-3xl text-espresso mb-2">Verify Payment</h1>
+                <h1 className="font-serif text-3xl text-espresso mb-2">Confirm Your Order</h1>
                 <p className="text-taupe text-sm mb-6">
-                  Enter your UTR/Transaction ID and upload a screenshot. Our system will verify it automatically.
+                  Enter your UPI Transaction ID to confirm. Optionally attach a screenshot — our team will verify and dispatch within 24 hours.
                 </p>
 
                 <div className="bg-pearl rounded-2xl border border-gold/15 p-5 space-y-5">
@@ -560,14 +542,13 @@ export default function Checkout() {
                   {/* Transaction ID */}
                   <div>
                     <label className="text-xs uppercase tracking-[0.18em] text-taupe block mb-2">
-                      UPI Transaction / UTR ID
+                      UPI Transaction / UTR ID <span className="text-errorRose">*</span>
                     </label>
                     <Input
                       type="text"
                       value={txnId}
-                      onChange={e => { setTxnId(e.target.value); if (verifyStatus) { setVerifyStatus(null); setVerifyResult(null); } }}
+                      onChange={e => setTxnId(e.target.value)}
                       placeholder="e.g. 407812345678  (12-digit UTR)"
-                      disabled={verifyStatus === "verified"}
                       className="h-11 rounded-xl border-gold/30 bg-ivory text-espresso placeholder:text-taupe/60 font-mono tracking-wider focus-visible:ring-gold/40"
                     />
                     <p className="text-[11px] text-taupe mt-1.5">
@@ -575,27 +556,23 @@ export default function Checkout() {
                     </p>
                   </div>
 
-                  {/* Screenshot upload */}
+                  {/* Screenshot upload — optional */}
                   <div>
                     <label className="text-xs uppercase tracking-[0.18em] text-taupe block mb-2">
-                      Payment Screenshot
+                      Payment Screenshot <span className="text-taupe/60 normal-case tracking-normal">(optional)</span>
                     </label>
                     {!screenshotPreview ? (
-                      <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-gold/30 rounded-xl cursor-pointer hover:border-gold/60 hover:bg-rosemist/20 transition-all group">
-                        <Upload className="w-6 h-6 text-taupe mb-2 group-hover:text-espresso transition" />
-                        <span className="text-sm text-taupe group-hover:text-espresso transition">Tap to upload payment screenshot</span>
-                        <span className="text-xs text-taupe/60 mt-1">PNG, JPEG or WEBP · max 15 MB</span>
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gold/30 rounded-xl cursor-pointer hover:border-gold/60 hover:bg-rosemist/20 transition-all group">
+                        <Upload className="w-5 h-5 text-taupe mb-1.5 group-hover:text-espresso transition" />
+                        <span className="text-sm text-taupe group-hover:text-espresso transition">Tap to attach screenshot</span>
+                        <span className="text-xs text-taupe/60 mt-0.5">PNG, JPEG or WEBP · max 15 MB</span>
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/webp"
                           className="hidden"
                           onChange={e => {
                             const f = e.target.files?.[0];
-                            if (f) {
-                              setScreenshot(f);
-                              setScreenshotPreview(URL.createObjectURL(f));
-                              if (verifyStatus) { setVerifyStatus(null); setVerifyResult(null); }
-                            }
+                            if (f) { setScreenshot(f); setScreenshotPreview(URL.createObjectURL(f)); }
                           }}
                         />
                       </label>
@@ -604,65 +581,21 @@ export default function Checkout() {
                         <img
                           src={screenshotPreview}
                           alt="Payment screenshot"
-                          className="w-full max-h-80 object-contain rounded-xl border border-gold/20 bg-stone-50"
+                          className="w-full max-h-72 object-contain rounded-xl border border-gold/20 bg-stone-50"
                         />
-                        {verifyStatus !== "verified" && (
-                          <button
-                            onClick={() => { setScreenshot(null); setScreenshotPreview(null); setVerifyStatus(null); setVerifyResult(null); }}
-                            className="absolute top-2 right-2 w-7 h-7 bg-espresso/85 text-ivory rounded-full grid place-items-center hover:bg-espresso transition shadow-md">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {verifyStatus === "verified" && (
-                          <div className="absolute top-2 right-2 w-7 h-7 bg-green-600 text-white rounded-full grid place-items-center shadow-md">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                        )}
+                        <button
+                          onClick={() => { setScreenshot(null); setScreenshotPreview(null); }}
+                          className="absolute top-2 right-2 w-7 h-7 bg-espresso/85 text-ivory rounded-full grid place-items-center hover:bg-espresso transition shadow-md">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     )}
                   </div>
 
-                  {/* Verification status banner */}
-                  {verifyStatus === "checking" && (
-                    <motion.div initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
-                      className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                      <Loader2 className="w-5 h-5 text-blue-500 animate-spin shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-blue-700">Verifying payment…</p>
-                        <p className="text-xs text-blue-500 mt-0.5">
-                          Checking transaction ID · Scanning screenshot metadata · AI analysis
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                  {verifyStatus === "verified" && (
-                    <motion.div initial={{ opacity:0, scale:0.97 }} animate={{ opacity:1, scale:1 }}
-                      className="flex items-start gap-3 p-4 bg-green-50 rounded-xl border border-green-200">
-                      <ShieldCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-green-700">Payment Verified</p>
-                        <p className="text-xs text-green-600 mt-0.5">
-                          {verifyResult?.reason || "Transaction ID is unique and screenshot passed all checks"}
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                  {verifyStatus === "rejected" && (
-                    <motion.div initial={{ opacity:0, scale:0.97 }} animate={{ opacity:1, scale:1 }}
-                      className="flex items-start gap-3 p-4 bg-red-50 rounded-xl border border-red-200">
-                      <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-semibold text-red-700">Verification Failed</p>
-                        <p className="text-xs text-red-500 mt-0.5">{verifyResult?.reason || "Could not verify payment"}</p>
-                        <p className="text-xs text-red-400 mt-1">Please use a fresh, unedited screenshot from your payment app.</p>
-                      </div>
-                    </motion.div>
-                  )}
-
                   {/* Order summary */}
                   <div className="space-y-2 border-t border-gold/10 pt-4">
                     <div className="flex justify-between text-sm">
-                      <span className="text-taupe">Amount to verify</span>
+                      <span className="text-taupe">Amount paid</span>
                       <span className="font-semibold text-espresso">₹{grandTotal.toLocaleString("en-IN")}</span>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -673,31 +606,18 @@ export default function Checkout() {
                 </div>
 
                 <div className="flex gap-3 mt-6">
-                  <Button variant="outline"
-                    onClick={() => { setStep(2); setVerifyStatus(null); setVerifyResult(null); }}
+                  <Button variant="outline" onClick={() => setStep(2)}
                     className="flex-1 h-12 rounded-full border-gold/40 text-espresso">
                     Back
                   </Button>
-
-                  {verifyStatus !== "verified" ? (
-                    <Button
-                      onClick={handleVerify}
-                      disabled={verifyStatus === "checking" || !txnId.trim() || !screenshot}
-                      className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 font-medium">
-                      {verifyStatus === "checking"
-                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying…</>
-                        : "Verify Payment"}
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleConfirm}
-                      disabled={submitting}
-                      className="flex-1 h-12 rounded-full bg-green-600 hover:bg-green-700 text-white font-medium">
-                      {submitting
-                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming…</>
-                        : <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm Order</>}
-                    </Button>
-                  )}
+                  <Button
+                    onClick={handleConfirm}
+                    disabled={submitting || !txnId.trim()}
+                    className="flex-1 h-12 rounded-full bg-espresso text-ivory hover:bg-espresso/90 font-medium">
+                    {submitting
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming…</>
+                      : <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm Order</>}
+                  </Button>
                 </div>
               </motion.div>
             )}
