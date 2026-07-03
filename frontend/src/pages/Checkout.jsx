@@ -254,7 +254,7 @@ export default function Checkout() {
     setSubmitting(true);
     try {
       const res = await api.post("/orders", {
-        items: items.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price })),
+        items: items.map(i => ({ id: i.id, name: i.name, brand: i.brand || "", img: i.img || "", qty: i.qty, price: i.price })),
         total: grandTotal,
         shipping_address: ship,
         billing_address: sameAddress ? ship : bill,

@@ -39,7 +39,7 @@ const ADDR_LABELS = ["Home", "Work", "Other"];
 
 export default function Account() {
   const { user, logout, isLoggedIn } = useAuth();
-  const { addItem } = useCart();
+  const { addToCart, updateQty } = useCart();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [tab, setTab] = useState("orders");
@@ -152,7 +152,10 @@ export default function Account() {
   }
 
   function reorder(order) {
-    (order.items || []).forEach(item => addItem({ id: item.id, name: item.name, brand: item.brand || "", price: item.price, img: item.img || "" }));
+    (order.items || []).forEach(item => {
+      addToCart({ id: item.id, name: item.name, brand: item.brand || "", price: item.price, img: item.img || "" });
+      if ((item.qty || 1) > 1) updateQty(item.id, item.qty);
+    });
     toast.success(`${order.items?.length || 0} item${order.items?.length > 1 ? "s" : ""} added to cart`);
     navigate("/cart");
   }
