@@ -8,8 +8,9 @@ import {
   Trash2, ToggleLeft, ToggleRight, Truck, X, Check,
   MapPin, Star, Phone, UserCheck, ClipboardList, Loader2,
   Bug, ExternalLink, AlertTriangle, Sparkles, Upload,
-  Tag, Layers, Calendar,
+  Tag, Layers, Calendar, FileSpreadsheet,
 } from "lucide-react";
+import AmazonTab from "@/components/admin/AmazonTab";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
 import Footer from "@/components/site/Footer";
@@ -2839,6 +2840,7 @@ export default function Admin() {
     { id: "bookings",    label: "Svc Bookings",  Icon: Calendar },
     { id: "beauticians", label: "Beauticians",   Icon: UserCheck },
     { id: "inbox",       label: "Inbox",         Icon: ClipboardList },
+    { id: "amazon",      label: "Amazon",        Icon: FileSpreadsheet },
   ];
 
   return (
@@ -2884,6 +2886,7 @@ export default function Admin() {
           {tab === "bookings"    && <BookingsTab />}
           {tab === "beauticians" && <BeauticiansTab />}
           {tab === "inbox"       && <InboxTab />}
+          {tab === "amazon"      && <AmazonTab />}
         </motion.div>
       </main>
       <Footer />

@@ -2787,6 +2787,9 @@ async def retry_feature_request_github(fr_id: str, authorization: Optional[str] 
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 
+from amazon_pipeline import make_amazon_router
+api_router.include_router(make_amazon_router(db, token_from_header, is_admin_claims))
+
 app.include_router(api_router)
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 

@@ -29,6 +29,9 @@ services:
     env_file: ./backend/.env
     volumes:
       - uploads_data:/app/uploads
+      # Google Drive service account (read-only) — used by the Amazon pipeline
+      # Drive intake. The JSON lives ONLY on the server, never in git.
+      - ./gdrive-sa.json:/app/gdrive-sa.json:ro
     depends_on:
       - mongodb
     networks:
