@@ -13,7 +13,7 @@ import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import api from "@/lib/api";
+import api, { isNetworkError } from "@/lib/api";
 import { SERVICES } from "@/data/seed";
 
 const HYD_AREAS = [
@@ -264,7 +264,13 @@ export default function Book() {
       setBookingId(data.id);
       setDone(true);
     } catch (err) {
-      toast.error("Booking failed", { description: err.response?.data?.detail || "Please try again." });
+      toast.error("Booking failed", {
+        description: err.response?.data?.detail
+          || (isNetworkError(err)
+              ? "Network is slow — your booking may already be placed. Check My Bookings before retrying."
+              : "Please try again."),
+        duration: 8000,
+      });
     } finally {
       setSubmitting(false);
     }

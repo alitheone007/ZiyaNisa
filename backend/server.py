@@ -789,8 +789,11 @@ async def confirm_order(order_id: str, body: dict):
     if not upi_ref:
         raise HTTPException(status_code=400, detail="Transaction ID is required")
 
-    # Guard against reuse — double-check even if /payments/verify was called
-    if await db.transactions.find_one({"transaction_id": upi_ref}):
+    # Guard against reuse — but stay idempotent: if the SAME order already
+    # locked this txn (e.g. a confirm that timed out client-side and the user
+    # retried), return success instead of a scary "used for another order".
+    existing_txn = await db.transactions.find_one({"transaction_id": upi_ref})
+    if existing_txn and existing_txn.get("order_id") != order_id:
         raise HTTPException(
             status_code=409,
             detail="This Transaction ID has already been used for another order",
@@ -911,13 +914,17 @@ async def verify_payment(
     transaction_id: str    = Form(...),
     amount:         int    = Form(...),
     screenshot:     UploadFile = File(...),
+    order_id:       Optional[str] = Form(None),
 ):
     txn = transaction_id.strip().upper()
     if not txn or len(txn) < 6:
         raise HTTPException(status_code=400, detail="Transaction ID must be at least 6 characters")
 
-    # 1. Uniqueness check — prevent screenshot reuse across orders
-    if await db.transactions.find_one({"transaction_id": txn}):
+    # 1. Uniqueness check — prevent screenshot reuse across orders. The txn
+    # being locked by THIS order is fine: the checkout flow confirms first
+    # and uploads the screenshot in the background afterwards.
+    existing_txn = await db.transactions.find_one({"transaction_id": txn})
+    if existing_txn and existing_txn.get("order_id") != order_id:
         raise HTTPException(
             status_code=409,
             detail="This Transaction ID has already been used for another order. "
@@ -933,7 +940,20 @@ async def verify_payment(
     if len(image_bytes) > 15 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Screenshot too large — maximum 15 MB")
 
-    # 3. EXIF / metadata edit detection
+    # 3. Persist the screenshot for the team's manual payment review — done
+    # before any authenticity checks so it is kept even if those fail.
+    ext = {"image/png": ".png", "image/webp": ".webp"}.get(screenshot.content_type, ".jpg")
+    shot_name = f"{txn}{ext}"
+    payments_dir = UPLOADS_DIR / "payments"
+    payments_dir.mkdir(parents=True, exist_ok=True)
+    (payments_dir / shot_name).write_bytes(image_bytes)
+    if order_id:
+        await db.orders.update_one(
+            {"id": order_id},
+            {"$set": {"payment_screenshot": f"/api/uploads/payments/{shot_name}"}},
+        )
+
+    # 4. EXIF / metadata edit detection
     meta = await _check_image_metadata(image_bytes)
     if not meta.get("passed", True):
         return {
@@ -942,7 +962,7 @@ async def verify_payment(
             "checks": {"metadata": meta, "ai": None},
         }
 
-    # 4. AI vision analysis
+    # 5. AI vision analysis
     ai = await _analyze_with_vision(image_bytes, amount)
 
     if not ai.get("skipped"):
@@ -965,7 +985,7 @@ async def verify_payment(
                 "checks": {"metadata": meta, "ai": ai},
             }
 
-    # 5. Save pending verification so confirm endpoint can reference it
+    # 6. Save pending verification so confirm endpoint can reference it
     await db.payment_verifications.update_one(
         {"transaction_id": txn},
         {"$set": {
@@ -1872,6 +1892,16 @@ async def create_booking(payload: BookingCreate, authorization: Optional[str] = 
             user_id = claims.get("sub")
         except Exception:
             pass
+    # Idempotency: a confirm that timed out client-side and was retried must
+    # not create a duplicate booking for the same user/service/date/slot.
+    if user_id:
+        dup = await db.bookings.find_one({
+            "user_id": user_id, "service_id": payload.service_id,
+            "date": payload.date, "time_slot": payload.time_slot,
+            "status": {"$ne": "cancelled"},
+        }, {"_id": 0})
+        if dup:
+            return dup
     booking = Booking(**payload.model_dump(), user_id=user_id)
     await db.bookings.insert_one(booking.model_dump())
     doc = await db.bookings.find_one({"id": booking.id}, {"_id": 0})

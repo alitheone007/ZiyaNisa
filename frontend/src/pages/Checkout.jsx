@@ -14,7 +14,7 @@ import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import api from "@/lib/api";
+import api, { isNetworkError } from "@/lib/api";
 
 const UPI_ID   = "biliion@indianbnk";
 const MERCHANT = "MS BILIION SALES AND SERVICES";
@@ -263,8 +263,10 @@ export default function Checkout() {
       });
       setOrderId(res.data.id);
       setStep(2);
-    } catch {
-      toast.error("Could not place order. Please try again.");
+    } catch (err) {
+      toast.error(isNetworkError(err)
+        ? "Network is slow — please check your connection and try again."
+        : "Could not place order. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -274,22 +276,26 @@ export default function Checkout() {
     if (!txnId.trim()) { toast.error("Please enter your UPI Transaction / UTR ID"); return; }
     setSubmitting(true);
     try {
-      // Upload screenshot in background if provided (for admin manual review)
-      if (screenshot) {
-        try {
-          const fd = new FormData();
-          fd.append("transaction_id", txnId.trim());
-          fd.append("amount", String(Math.round(grandTotal)));
-          fd.append("screenshot", screenshot);
-          await api.post("/payments/verify", fd);
-        } catch { /* non-blocking — admin can verify manually */ }
-      }
+      // Confirm first — one fast round trip. The screenshot upload happens
+      // AFTER, in the background: on slow mobile uplinks a 5–15MB upload
+      // took >10s and made the whole confirm look frozen/failed.
       await api.patch(`/orders/${orderId}/confirm`, { upi_ref: txnId.trim() });
+      if (screenshot) {
+        const fd = new FormData();
+        fd.append("transaction_id", txnId.trim());
+        fd.append("amount", String(Math.round(grandTotal)));
+        fd.append("order_id", orderId);
+        fd.append("screenshot", screenshot);
+        api.post("/payments/verify", fd, { timeout: 180000 }).catch(() => {});
+      }
       clearCart();
       setStep(4);
     } catch (err) {
-      const msg = err?.response?.data?.detail || "Confirmation failed. Please try again.";
-      toast.error(msg);
+      const msg = err?.response?.data?.detail
+        || (isNetworkError(err)
+            ? "Network is slow — your order may already be confirmed. Check My Orders in your account before retrying."
+            : "Confirmation failed. Please try again.");
+      toast.error(msg, { duration: 8000 });
     } finally {
       setSubmitting(false);
     }

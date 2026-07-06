@@ -2,8 +2,17 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api",
-  timeout: 10000,
+  // 30s: 10s aborted healthy-but-slow requests on mobile networks, surfacing
+  // as false "failed" errors on checkout/booking confirms.
+  timeout: 30000,
 });
+
+// True when the request never got a server response (timeout / offline) —
+// the action MAY still have completed server-side, so callers should tell
+// the user to check before retrying rather than claim it failed.
+export function isNetworkError(err) {
+  return err?.code === "ECONNABORTED" || (!err?.response && !!err?.request);
+}
 
 // ── Bootstrap auth header synchronously ──────────────────────────────────────
 // Set it from localStorage at module-load time so the very first API calls

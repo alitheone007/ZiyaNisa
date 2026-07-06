@@ -955,6 +955,21 @@ function OrdersTab() {
                   placeholder="Internal notes (not shown to customer)"
                   className="w-full rounded-lg border border-stone-200 px-3 py-2 text-xs text-espresso focus:outline-none focus:ring-1 focus:ring-gold bg-white resize-none" />
               </div>
+              {/* Payment verification */}
+              {(editOrder.upi_ref || editOrder.payment_screenshot) && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-taupe mb-1.5">Payment</p>
+                  {editOrder.upi_ref && (
+                    <p className="text-xs text-espresso font-mono mb-1.5">UTR: {editOrder.upi_ref}</p>
+                  )}
+                  {editOrder.payment_screenshot && (
+                    <a href={editOrder.payment_screenshot} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-gold hover:text-espresso underline underline-offset-2 transition">
+                      <ExternalLink className="w-3 h-3" /> View payment screenshot
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-stone-100 flex gap-2">
               <Button variant="ghost" onClick={() => setEditOrder(null)} className="flex-1 rounded-xl text-sm">Cancel</Button>
