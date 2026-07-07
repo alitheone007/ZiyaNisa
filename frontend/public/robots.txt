@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout
+Disallow: /cart
+Disallow: /login
+Disallow: /wishlist
+Disallow: /orders/
+Disallow: /duty
+
+Sitemap: https://ziyanisa.bilionsales.com/api/sitemap.xml

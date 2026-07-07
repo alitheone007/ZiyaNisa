@@ -1,4 +1,5 @@
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Hero from "@/components/site/Hero";
 import TrustBadges from "@/components/site/TrustBadges";
 import CategoryGrid from "@/components/site/CategoryGrid";
@@ -15,6 +16,7 @@ import Footer from "@/components/site/Footer";
 export default function Home() {
   return (
     <div data-testid="home-page" className="min-h-screen bg-ivory text-espresso">
+      <Seo path="/" />
       <Header />
       <main>
         <Hero />

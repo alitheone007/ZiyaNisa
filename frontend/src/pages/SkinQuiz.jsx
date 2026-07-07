@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useAuth } from "@/context/AuthContext";
@@ -126,6 +127,7 @@ export default function SkinQuiz() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Skin Quiz" description="Find your perfect skincare routine — take the ZiyaNisa skin quiz." path="/skin-quiz" />
       <Header />
       <main className="pt-24 md:pt-28 pb-24">
         <div className="max-w-xl mx-auto px-5 md:px-10">

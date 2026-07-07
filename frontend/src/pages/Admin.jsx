@@ -13,6 +13,7 @@ import {
 import AmazonTab from "@/components/admin/AmazonTab";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -2834,7 +2835,8 @@ export default function Admin() {
   if (!isLoggedIn || !user?.is_admin) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
-        <Header />
+        <Seo title="Admin" noindex />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
           <p className="text-taupe">This page is only accessible to admins.</p>
           <Button onClick={() => navigate("/")} className="rounded-full bg-espresso text-ivory px-6">
@@ -2860,6 +2862,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Admin" noindex />
       <Header />
       <main className="pt-28 pb-24 px-4 max-w-6xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>

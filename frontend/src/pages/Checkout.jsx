@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useCart } from "@/context/CartContext";
@@ -213,7 +214,8 @@ export default function Checkout() {
   if (items.length === 0 && step < 4) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
-        <Header />
+        <Seo title="Checkout" noindex />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center gap-6 px-5 min-h-[60vh] justify-center">
           <p className="text-taupe text-lg">Your cart is empty.</p>
           <Button onClick={() => navigate("/shop")} className="rounded-full bg-espresso text-ivory px-8 h-12">
@@ -303,6 +305,7 @@ export default function Checkout() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Checkout" noindex />
       <Header />
       <main className="pt-24 md:pt-28 pb-24">
         <div className="max-w-3xl mx-auto px-5 md:px-10">

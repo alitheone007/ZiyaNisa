@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import Seo from "@/components/site/Seo";
 
 function isEmail(s) {
   return s.includes("@");
@@ -110,6 +111,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-ivory flex items-center justify-center px-5">
+      <Seo title="Sign In" noindex />
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 -left-20 w-96 h-96 bg-peach/20 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-aqua/15 rounded-full blur-3xl" />

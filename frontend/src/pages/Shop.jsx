@@ -8,6 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import api from "@/lib/api";
@@ -118,6 +119,7 @@ export default function Shop() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Shop Beauty & Lifestyle Products" description="Explore premium skincare, K-beauty and lifestyle products. Free delivery over ₹999." path="/shop" />
       <Header />
       <main className="pt-24 md:pt-28 pb-20">
         <div className="max-w-7xl mx-auto px-5 md:px-10">

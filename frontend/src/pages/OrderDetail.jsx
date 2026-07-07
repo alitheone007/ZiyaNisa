@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Package, ChevronRight, CheckCircle2, Clock, Truck, XCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useAuth } from "@/context/AuthContext";
@@ -74,7 +75,8 @@ export default function OrderDetail() {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-ivory">
-        <Header />
+        <Seo title="Order Details" noindex />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center gap-4">
           <p className="text-taupe">Please sign in to view your order.</p>
           <Button onClick={() => navigate("/login")} className="rounded-full bg-espresso text-ivory px-6">
@@ -89,7 +91,8 @@ export default function OrderDetail() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-ivory">
-        <Header />
+        <Seo title="Order Details" noindex />
+      <Header />
         <main className="pt-28 pb-20 max-w-2xl mx-auto px-5 space-y-4 animate-pulse">
           <div className="h-6 w-32 bg-rosemist/50 rounded" />
           <div className="h-40 bg-rosemist/50 rounded-2xl" />
@@ -103,7 +106,8 @@ export default function OrderDetail() {
   if (isError || !order) {
     return (
       <div className="min-h-screen bg-ivory">
-        <Header />
+        <Seo title="Order Details" noindex />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center gap-4">
           <p className="text-taupe">Order not found.</p>
           <Button onClick={() => navigate("/account")} className="rounded-full bg-espresso text-ivory px-6">
@@ -124,6 +128,7 @@ export default function OrderDetail() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Order Details" noindex />
       <Header />
 
       <main className="pt-24 md:pt-28 pb-24">

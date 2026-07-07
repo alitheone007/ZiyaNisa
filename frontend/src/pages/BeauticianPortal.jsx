@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import Seo from "@/components/site/Seo";
 
 const SKILL_NAMES = {
   s1: "Korean Glow Facial", s2: "Saffron Cleanup", s3: "Bridal Makeup",
@@ -109,6 +110,7 @@ export default function BeauticianPortal() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white flex flex-col">
+      <Seo title="Beautician Duty" noindex />
       {/* Header */}
       <div className="px-5 pt-8 pb-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-gold/20 grid place-items-center">

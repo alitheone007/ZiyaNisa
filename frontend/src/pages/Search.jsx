@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search as SearchIcon, X, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { ProductCard } from "@/components/site/ProductTeaser";
@@ -67,6 +68,7 @@ export default function Search() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Search" noindex />
       <Header />
 
       <main className="pt-24 md:pt-28 pb-24">

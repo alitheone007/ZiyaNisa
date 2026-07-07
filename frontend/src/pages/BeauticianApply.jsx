@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import Seo from "@/components/site/Seo";
 
 const HYD_AREAS = [
   "Banjara Hills","Jubilee Hills","Madhapur","Hitech City","Gachibowli","Kondapur",
@@ -251,6 +252,7 @@ export default function BeauticianApply() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white flex flex-col">
+      <Seo title="Join as a Beautician" description="Work with ZiyaNisa — flexible at-home beauty service work in Hyderabad." path="/beautician/apply" />
       {/* Header */}
       <div className="px-5 pt-8 pb-4 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-xl bg-white/10 grid place-items-center hover:bg-white/15 transition">

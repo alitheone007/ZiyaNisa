@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Star, ShoppingBag, Heart, ChevronRight, Check, MessageSquare, GitCompareArrows, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import api from "@/lib/api";
@@ -290,6 +291,28 @@ export default function ProductDetail() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo
+        title={product.name}
+        description={`${product.name} by ${product.brand || "ZiyaNisa"} — ₹${product.price?.toLocaleString("en-IN")}. ${(product.actives || []).slice(0, 3).join(", ")}`.slice(0, 158)}
+        path={`/product/${product.id}`}
+        image={product.img}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name,
+          image: product.img,
+          description: (product.actives || []).join(", ") || product.name,
+          brand: { "@type": "Brand", name: product.brand || "ZiyaNisa" },
+          offers: {
+            "@type": "Offer",
+            url: `https://ziyanisa.bilionsales.com/product/${product.id}`,
+            priceCurrency: "INR",
+            price: product.price,
+            availability: "https://schema.org/InStock",
+            seller: { "@type": "Organization", name: "M S BILION SALES AND SERVICES" },
+          },
+        }}
+      />
       <Header />
       <main className="pt-24 md:pt-28 pb-20">
         <div className="max-w-7xl mx-auto px-5 md:px-10">

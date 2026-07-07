@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useAuth } from "@/context/AuthContext";
@@ -214,7 +215,8 @@ export default function Book() {
   if (!service) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
-        <Header />
+        <Seo title={service ? `Book ${service.name}` : "Book a Service"} description={service ? `Book ${service.name} at home in Hyderabad — ₹${service.price}` : undefined} path={`/book/${serviceId}`} />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center px-5 min-h-[60vh]">
           <p className="text-taupe mb-4">Service not found.</p>
           <Button onClick={() => navigate("/services")} className="rounded-full bg-espresso text-ivory px-6">
@@ -285,7 +287,8 @@ export default function Book() {
   if (done) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
-        <Header />
+        <Seo title={service ? `Book ${service.name}` : "Book a Service"} description={service ? `Book ${service.name} at home in Hyderabad — ₹${service.price}` : undefined} path={`/book/${serviceId}`} />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center px-5 text-center">
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200 }}>
             <div className="w-20 h-20 rounded-full bg-green-50 border border-green-200 grid place-items-center mx-auto mb-6">
@@ -339,6 +342,7 @@ export default function Book() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title={service ? `Book ${service.name}` : "Book a Service"} description={service ? `Book ${service.name} at home in Hyderabad — ₹${service.price}` : undefined} path={`/book/${serviceId}`} />
       <Header />
       <main className="pt-24 md:pt-28 pb-24">
         <div className="max-w-2xl mx-auto px-5 md:px-10">

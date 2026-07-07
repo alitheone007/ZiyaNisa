@@ -2815,6 +2815,39 @@ async def retry_feature_request_github(fr_id: str, authorization: Optional[str] 
     raise HTTPException(status_code=502, detail="GitHub issue creation failed — check GITHUB_TOKEN and GITHUB_REPO")
 
 
+# ── SEO: sitemap ───────────────────────────────────────────────────────────────
+# Referenced from /robots.txt (cross-path sitemaps are valid when declared
+# there). Built live from DB + seed products/services so it never goes stale.
+
+SITE_URL = os.environ.get("SITE_URL", "https://ziyanisa.bilionsales.com")
+
+@api_router.get("/sitemap.xml")
+async def sitemap():
+    from fastapi.responses import Response as _Resp
+    static_paths = ["/", "/shop", "/services", "/skin-quiz", "/beautician/apply"]
+    urls = [(p, "weekly", "0.8" if p != "/" else "1.0") for p in static_paths]
+
+    db_products = await db.products.find({}, {"_id": 0, "id": 1}).to_list(2000)
+    ids = {p["id"] for p in db_products} | {p["id"] for p in PRODUCTS_SEED}
+    urls += [(f"/product/{pid}", "weekly", "0.7") for pid in sorted(ids)]
+
+    cats = await db.categories.find({}, {"_id": 0, "id": 1}).to_list(100)
+    cat_ids = {c["id"] for c in cats} | {c["id"] for c in CATEGORIES_SEED}
+    urls += [(f"/shop/{cid}", "weekly", "0.6") for cid in sorted(cat_ids)]
+
+    svcs = await db.services.find({}, {"_id": 0, "id": 1}).to_list(200)
+    svc_ids = {s["id"] for s in svcs} | {s["id"] for s in SERVICES_SEED}
+    urls += [(f"/book/{sid}", "monthly", "0.6") for sid in sorted(svc_ids)]
+
+    body = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    body += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for path, freq, pri in urls:
+        body += (f"  <url><loc>{SITE_URL}{path}</loc>"
+                 f"<changefreq>{freq}</changefreq><priority>{pri}</priority></url>\n")
+    body += "</urlset>\n"
+    return _Resp(content=body, media_type="application/xml")
+
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 from amazon_pipeline import make_amazon_router

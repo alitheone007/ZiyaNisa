@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
+import Seo from "@/components/site/Seo";
 import Footer from "@/components/site/Footer";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
 import { useCart } from "@/context/CartContext";
@@ -18,7 +19,8 @@ export default function Cart() {
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-ivory text-espresso">
-        <Header />
+        <Seo title="Shopping Cart" noindex />
+      <Header />
         <main className="pt-28 pb-20 flex flex-col items-center justify-center gap-6 px-5 min-h-[60vh]">
           <div className="w-24 h-24 rounded-full bg-rosemist grid place-items-center">
             <ShoppingBag className="w-10 h-10 text-taupe" />
@@ -45,6 +47,7 @@ export default function Cart() {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso">
+      <Seo title="Shopping Cart" noindex />
       <Header />
       <main className="pt-24 md:pt-28 pb-20">
         <div className="max-w-6xl mx-auto px-5 md:px-10">
