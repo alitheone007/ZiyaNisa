@@ -2848,6 +2848,52 @@ async def sitemap():
     return _Resp(content=body, media_type="application/xml")
 
 
+@api_router.get("/og/product/{product_id}")
+async def og_product(product_id: str):
+    """Server-rendered OG meta for social link-preview bots (WhatsApp, FB,
+    Twitter...) which don't run JS. Nginx routes only bot user-agents here;
+    humans always get the SPA. Includes a redirect for any human who lands
+    on the raw URL."""
+    import html as _html
+    from fastapi.responses import HTMLResponse
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        product = next((p for p in PRODUCTS_SEED if p["id"] == product_id), None)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    name  = _html.escape(product.get("name", "Product"))
+    brand = _html.escape(product.get("brand", "ZiyaNisa"))
+    price = product.get("price", 0)
+    img   = product.get("img", "") or f"{SITE_URL}/og-cover.png"
+    if img.startswith("/"):
+        img = f"{SITE_URL}{img}"
+    img   = _html.escape(img)
+    url   = f"{SITE_URL}/product/{_html.escape(product_id)}"
+    title = f"{name} — ZiyaNisa"
+    desc  = _html.escape(f"{name} by {brand} — ₹{price:,} at ZiyaNisa. Premium beauty & lifestyle.")
+
+    page = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>{title}</title>
+<meta name="description" content="{desc}">
+<meta property="og:site_name" content="ZiyaNisa">
+<meta property="og:type" content="product">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:url" content="{url}">
+<meta property="og:image" content="{img}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{title}">
+<meta name="twitter:image" content="{img}">
+<meta property="product:price:amount" content="{price}">
+<meta property="product:price:currency" content="INR">
+<meta http-equiv="refresh" content="0;url={url}">
+</head><body><p>Redirecting to <a href="{url}">{title}</a>…</p></body></html>"""
+    return HTMLResponse(content=page)
+
+
 # ── App setup ──────────────────────────────────────────────────────────────────
 
 from amazon_pipeline import make_amazon_router
