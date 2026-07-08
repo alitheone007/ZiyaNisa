@@ -16,6 +16,7 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import api, { isNetworkError } from "@/lib/api";
+import { compressImage } from "@/lib/compressImage";
 
 const UPI_ID   = "biliion@indianbnk";
 const MERCHANT = "MS BILIION SALES AND SERVICES";
@@ -283,12 +284,17 @@ export default function Checkout() {
       // took >10s and made the whole confirm look frozen/failed.
       await api.patch(`/orders/${orderId}/confirm`, { upi_ref: txnId.trim() });
       if (screenshot) {
-        const fd = new FormData();
-        fd.append("transaction_id", txnId.trim());
-        fd.append("amount", String(Math.round(grandTotal)));
-        fd.append("order_id", orderId);
-        fd.append("screenshot", screenshot);
-        api.post("/payments/verify", fd, { timeout: 180000 }).catch(() => {});
+        // Compress first: raw phone screenshots (2–8MB) exceeded upload
+        // limits and stalled on mobile uplinks; ~1280px JPEG is plenty
+        // for the team to read the UTR and amount.
+        compressImage(screenshot).then(blob => {
+          const fd = new FormData();
+          fd.append("transaction_id", txnId.trim());
+          fd.append("amount", String(Math.round(grandTotal)));
+          fd.append("order_id", orderId);
+          fd.append("screenshot", blob, "payment.jpg");
+          return api.post("/payments/verify", fd, { timeout: 180000 });
+        }).catch(() => {});
       }
       clearCart();
       setStep(4);

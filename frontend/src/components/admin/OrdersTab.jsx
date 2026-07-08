@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, RefreshCw, Pencil, Truck, X, Phone, ExternalLink } from "lucide-react";
+import { Package, RefreshCw, Pencil, Truck, X, Phone, ExternalLink, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -150,11 +150,15 @@ export function OrdersTab() {
                   {editOrder.upi_ref && (
                     <p className="text-xs text-espresso font-mono mb-1.5">UTR: {editOrder.upi_ref}</p>
                   )}
-                  {editOrder.payment_screenshot && (
+                  {editOrder.payment_screenshot ? (
                     <a href={editOrder.payment_screenshot} target="_blank" rel="noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs text-gold hover:text-espresso underline underline-offset-2 transition">
                       <ExternalLink className="w-3 h-3" /> View payment screenshot
                     </a>
+                  ) : (
+                    <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                      <AlertTriangle className="w-3 h-3" /> No screenshot on file — verify this UTR manually before dispatch
+                    </p>
                   )}
                 </div>
               )}

@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import api from "@/lib/api";
+import api, { isNetworkError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Seo from "@/components/site/Seo";
 
@@ -44,7 +44,7 @@ const EMPTY = {
   selfie_b64: "", id_proof_b64: "", id_type: "aadhaar",
 };
 
-function compressToBase64(file, maxWidth = 800, quality = 0.75) {
+function compressToBase64(file, maxWidth = 720, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -155,6 +155,10 @@ export default function BeauticianApply() {
       const msg = err.response?.data?.detail;
       if (err.response?.status === 409) {
         toast.error("An application already exists for this number. Check your status at the Beautician Portal.");
+      } else if (err.response?.status === 413) {
+        toast.error("Your photos are too large to upload. Please re-upload both photos (they will be re-compressed) and try again.", { duration: 8000 });
+      } else if (isNetworkError(err)) {
+        toast.error("Network is slow — please check your connection and try again.", { duration: 8000 });
       } else {
         toast.error(msg || "Submission failed. Please try again.");
       }

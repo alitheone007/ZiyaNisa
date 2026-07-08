@@ -189,9 +189,12 @@ export default function Book() {
       await api.post("/auth/send-otp", { contact });
       setOtpPhase("sent");
       toast.success("OTP sent to your mobile");
-    } catch {
+    } catch (err) {
       setOtpPhase("idle");
-      toast.error("Failed to send OTP. Check the number and try again.");
+      // Surface the real reason — especially the 429 rate-limit wait time,
+      // which the generic message used to hide.
+      toast.error(err.response?.data?.detail || "Failed to send OTP. Check the number and try again.",
+        { duration: err.response?.status === 429 ? 8000 : 4000 });
     }
   }
 
@@ -241,7 +244,11 @@ export default function Book() {
         address.full_name.trim() &&
         phone.length >= 10 &&
         address.line1.trim() &&
-        address.pin.replace(/\D/g, "").length === 6
+        address.pin.replace(/\D/g, "").length === 6 &&
+        // Guests must verify their phone: unverified bookings were created
+        // anonymously and never appeared in "My Bookings" — looked like the
+        // booking silently failed.
+        (isLoggedIn || otpPhase === "verified")
       );
     }
     return true;
