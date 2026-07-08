@@ -4,16 +4,16 @@ from typing import List
 # ── Seed data ─────────────────────────────────────────────────────────────────
 
 CATEGORIES_SEED: List[dict] = [
-    {"id": "skincare",  "label": "Skincare",          "img": "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=800&q=80"},
-    {"id": "haircare",  "label": "Haircare",           "img": "https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=800&q=80"},
-    {"id": "makeup",    "label": "Makeup",             "img": "https://images.unsplash.com/photo-1586495777744-4e6232bf0340?w=800&q=80"},
-    {"id": "bath-body", "label": "Bath & Body",        "img": "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80"},
-    {"id": "fragrance", "label": "Fragrance & Ittar",  "img": "https://images.unsplash.com/photo-1543422655-ac1c6ca993ed?w=800&q=80"},
-    {"id": "jewellery", "label": "Jewellery",          "img": "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&q=80"},
-    {"id": "handbags",  "label": "Handbags",           "img": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&q=80"},
-    {"id": "tools",     "label": "Beauty Tools",       "img": "https://images.unsplash.com/photo-1598030304671-5aa1d6f9e78f?w=800&q=80"},
-    {"id": "mens",      "label": "Men's Grooming",     "img": "https://images.unsplash.com/photo-1581375074612-d1fd0e661aeb?w=800&q=80"},
-    {"id": "bridal",    "label": "Bridal & Occasion",  "img": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80"},
+    {"id": "skincare",  "label": "Skincare",          "img": "/categories/skincare.jpg"},
+    {"id": "haircare",  "label": "Haircare",           "img": "/categories/haircare.jpg"},
+    {"id": "makeup",    "label": "Makeup",             "img": "/categories/makeup.jpg"},
+    {"id": "bath-body", "label": "Bath & Body",        "img": "/categories/bath-body.jpg"},
+    {"id": "fragrance", "label": "Fragrance & Ittar",  "img": "/categories/fragrance.jpg"},
+    {"id": "jewellery", "label": "Jewellery",          "img": "/categories/jewellery.jpg"},
+    {"id": "handbags",  "label": "Handbags",           "img": "/categories/handbags.jpg"},
+    {"id": "tools",     "label": "Beauty Tools",       "img": "/categories/tools.jpg"},
+    {"id": "mens",      "label": "Men's Grooming",     "img": "/categories/mens.jpg"},
+    {"id": "bridal",    "label": "Bridal & Occasion",  "img": "/categories/bridal.jpg"},
 ]
 
 PRODUCTS_SEED: List[dict] = [
