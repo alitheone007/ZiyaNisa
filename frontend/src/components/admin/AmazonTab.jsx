@@ -57,8 +57,8 @@ export default function AmazonTab() {
         </div>
         {status && (
           <div className="flex gap-2 text-[11px]">
-            <span className={`px-2.5 py-1 rounded-full border ${status.anthropic_key_set ? "text-green-700 border-green-200 bg-green-50" : "text-taupe border-gold/20 bg-pearl"}`}>
-              AI {status.anthropic_key_set ? "ready" : "no key"}
+            <span className={`px-2.5 py-1 rounded-full border ${(status.gemini_key_set || status.anthropic_key_set) ? "text-green-700 border-green-200 bg-green-50" : "text-taupe border-gold/20 bg-pearl"}`}>
+              AI {status.gemini_key_set ? "ready (Gemini)" : status.anthropic_key_set ? "ready (Claude)" : "no key"}
             </span>
             <span className={`px-2.5 py-1 rounded-full border ${status.drive_configured ? "text-green-700 border-green-200 bg-green-50" : "text-taupe border-gold/20 bg-pearl"}`}>
               Drive {status.drive_configured ? "connected" : "not set up"}
@@ -205,7 +205,7 @@ function IntakePanel() {
 function ReviewPanel({ status }) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState("todo");
-  const [provider, setProvider] = useState("claude");
+  const [provider, setProvider] = useState("gemini");
 
   const params = {
     todo:     "uploaded=no",
@@ -251,6 +251,7 @@ function ReviewPanel({ status }) {
         <div className="flex items-center gap-2">
           <select value={provider} onChange={e => setProvider(e.target.value)}
             className="h-9 rounded-full border border-gold/25 bg-pearl px-3 text-xs text-espresso focus:outline-none">
+            <option value="gemini">Gemini (cloud)</option>
             <option value="claude">Claude (cloud)</option>
             <option value="ollama">Ollama (local)</option>
           </select>

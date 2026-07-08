@@ -260,6 +260,41 @@ async def _classify_claude(paths: List[Path]) -> List[dict]:
     return out
 
 
+async def _classify_gemini(paths: List[Path]) -> List[dict]:
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="GEMINI_API_KEY not set on the server")
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    out: List[dict] = []
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        for i in range(0, len(paths), 8):
+            chunk = paths[i:i + 8]
+            parts = []
+            for n, p in enumerate(chunk, 1):
+                b64 = await asyncio.to_thread(_thumb_b64_from_file, p)
+                parts.append({"text": f"Image {n}:"})
+                parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64}})
+            parts.append({"text": CLASSIFY_PROMPT})
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                params={"key": api_key},
+                json={"contents": [{"parts": parts}],
+                      "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}},
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502,
+                                    detail=f"Gemini API error {resp.status_code}: {resp.text[:200]}")
+            try:
+                txt = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                txt = txt.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(txt)
+                out.extend(parsed if isinstance(parsed, list) else [parsed])
+            except (KeyError, IndexError, json.JSONDecodeError):
+                out.extend([{"n": n, "item_type": "?", "confidence": "low",
+                             "issues": "parse_error"} for n in range(1, len(chunk) + 1)])
+    return out
+
+
 async def _classify_ollama(paths: List[Path]) -> List[dict]:
     host  = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     model = os.environ.get("VISION_MODEL", "moondream")
@@ -280,7 +315,7 @@ async def _classify_ollama(paths: List[Path]) -> List[dict]:
     return out
 
 
-VISION_PROVIDERS = {"claude": _classify_claude, "ollama": _classify_ollama}
+VISION_PROVIDERS = {"gemini": _classify_gemini, "claude": _classify_claude, "ollama": _classify_ollama}
 
 
 # ── Google Drive intake (service account, no user OAuth) ──────────────────────
@@ -790,6 +825,7 @@ def make_amazon_router(db, token_from_header, is_admin_claims) -> APIRouter:
         return {"batches": batches, "pending_ai": pending_ai, "need_input": need_input,
                 "providers": list(VISION_PROVIDERS),
                 "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                "gemini_key_set": bool(os.environ.get("GEMINI_API_KEY")),
                 "drive_configured": drive_ok}
 
     return router
