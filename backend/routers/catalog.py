@@ -44,8 +44,11 @@ async def get_status_checks():
 
 @router.get("/categories", response_model=List[Category])
 async def get_categories():
+    # Merge DB + seeds (DB wins on id clash) — either/or made the first
+    # admin-created category silently replace all 10 seed categories.
     cats = await db.categories.find({}, {"_id": 0}).to_list(50)
-    return cats if cats else CATEGORIES_SEED
+    db_ids = {c["id"] for c in cats}
+    return cats + [c for c in CATEGORIES_SEED if c["id"] not in db_ids]
 
 SORT_MAP = {
     "rating":     [("rating", -1)],
@@ -144,7 +147,10 @@ async def get_product(product_id: str):
 
 @router.get("/services", response_model=List[Service])
 async def get_services():
+    # Same merge as categories/products — the first admin-created service
+    # must not hide the seed services.
     svcs = await db.services.find({}, {"_id": 0}).to_list(100)
-    return svcs if svcs else SERVICES_SEED
+    db_ids = {s["id"] for s in svcs}
+    return svcs + [s for s in SERVICES_SEED if s["id"] not in db_ids]
 
 
