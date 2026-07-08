@@ -23,6 +23,13 @@ export function ProductsTab() {
     retry: false,
   });
 
+  // Canonical categories for the picker — free-text category ids silently
+  // orphaned products outside the shop's category navigation.
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => api.get("/categories").then(r => r.data),
+  });
+
   const { mutate: saveProduct, isPending: saving } = useMutation({
     mutationFn: (payload) => editId
       ? api.put(`/admin/products/${editId}`, payload)
@@ -140,7 +147,6 @@ export function ProductsTab() {
     { key: "brand",       label: "Brand" },
     { key: "price",       label: "Price (₹)",                 type: "number" },
     { key: "mrp",         label: "MRP (₹)",                   type: "number" },
-    { key: "category_id", label: "Category ID" },
     { key: "actives",     label: "Actives (comma-separated)", span: "col-span-2" },
     { key: "badges",      label: "Badges (comma-separated)",  span: "col-span-2 md:col-span-1" },
   ];
@@ -235,6 +241,18 @@ export function ProductsTab() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Category — canonical picker, not free text */}
+              <div>
+                <label className="text-[11px] text-taupe block mb-1">Category</label>
+                <select
+                  value={form.category_id}
+                  onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}
+                  className="w-full h-9 rounded-lg border border-stone-200 px-2 text-sm text-espresso bg-white focus:outline-none focus:ring-1 focus:ring-gold">
+                  <option value="">— select category —</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
               </div>
 
               {FIELDS.map(({ key, label, span = "", type = "text" }) => (
