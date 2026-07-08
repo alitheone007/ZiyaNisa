@@ -72,6 +72,7 @@ export function ProductsTab() {
       price: String(p.price || ""),
       mrp: String(p.mrp || ""),
       img: p.img || "",
+      images: p.images || [],
       category_id: p.category_id || "",
       actives: (p.actives || []).join(", "),
       badges: (p.badges || []).join(", "),
@@ -92,6 +93,7 @@ export function ProductsTab() {
       price: parseInt(form.price, 10),
       mrp: parseInt(form.mrp || form.price, 10),
       img: form.img,
+      images: form.images,
       category_id: form.category_id || null,
       actives: form.actives.split(",").map(s => s.trim()).filter(Boolean),
       badges: form.badges.split(",").map(s => s.trim()).filter(Boolean),
@@ -100,18 +102,30 @@ export function ProductsTab() {
   }
 
   async function handleImgUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("Image must be under 10 MB"); return; }
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    if (files.some(f => f.size > 10 * 1024 * 1024)) { toast.error("Each image must be under 10 MB"); return; }
     setUploadingImg(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data: res } = await api.post("/admin/upload-image", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const urls = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const { data: res } = await api.post("/admin/upload-image", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        urls.push(res.url);
+      }
+      // First upload fills the main image if empty; the rest go to the gallery
+      setForm(f => {
+        let main = f.img, gallery = [...f.images];
+        for (const u of urls) {
+          if (!main) main = u;
+          else gallery.push(u);
+        }
+        return { ...f, img: main, images: gallery };
       });
-      setForm(f => ({ ...f, img: res.url }));
-      toast.success("Image uploaded");
+      toast.success(`${urls.length} image${urls.length > 1 ? "s" : ""} uploaded`);
     } catch (err) {
       toast.error(err.response?.data?.detail || "Upload failed");
     } finally {
@@ -160,15 +174,15 @@ export function ProductsTab() {
                 {editId ? "Edit Product" : "New Product"}
               </h3>
 
-              {/* Image — URL input + Drive upload button */}
+              {/* Images — main + gallery, multi-upload, per-image remove */}
               <div className="col-span-2 md:col-span-3">
-                <label className="text-[11px] text-taupe block mb-1">Image</label>
+                <label className="text-[11px] text-taupe block mb-1">Images (first = main, select multiple to add gallery)</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="text"
                     value={form.img}
                     onChange={e => setForm(f => ({ ...f, img: e.target.value }))}
-                    placeholder="Paste image URL  —  or upload →"
+                    placeholder="Main image URL  —  or upload →"
                     className="flex-1 h-9 rounded-lg border border-stone-200 px-3 text-sm text-espresso bg-white focus:outline-none focus:ring-1 focus:ring-gold"
                   />
                   <button type="button" onClick={() => imgFileRef.current?.click()}
@@ -178,13 +192,49 @@ export function ProductsTab() {
                       ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Uploading…</>
                       : <><Upload className="w-3.5 h-3.5" />Upload</>}
                   </button>
-                  <input ref={imgFileRef} type="file" accept="image/*" className="sr-only"
+                  <input ref={imgFileRef} type="file" accept="image/*" multiple className="sr-only"
                     onChange={handleImgUpload} />
-                  {form.img && (
-                    <img src={form.img} alt="preview"
-                      className="w-9 h-9 rounded-lg object-cover border border-stone-200 shrink-0" />
-                  )}
                 </div>
+                {(form.img || form.images.length > 0) && (
+                  <div className="flex gap-2 flex-wrap mt-2">
+                    {form.img && (
+                      <div className="relative">
+                        <img src={form.img} alt="main"
+                          className="w-16 h-16 rounded-lg object-cover border-2 border-gold" />
+                        <span className="absolute bottom-0 inset-x-0 text-[9px] text-center bg-gold/90 text-espresso rounded-b-md font-semibold">MAIN</span>
+                        <button type="button"
+                          onClick={() => setForm(f => {
+                            // removing main promotes the first gallery image
+                            const [next, ...rest] = f.images;
+                            return { ...f, img: next || "", images: next ? rest : [] };
+                          })}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full grid place-items-center shadow hover:bg-red-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                    {form.images.map((u, i) => (
+                      <div key={i} className="relative">
+                        <img src={u} alt={`gallery ${i + 1}`}
+                          className="w-16 h-16 rounded-lg object-cover border border-stone-200" />
+                        <button type="button"
+                          onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full grid place-items-center shadow hover:bg-red-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                        <button type="button" title="Make main"
+                          onClick={() => setForm(f => {
+                            const gallery = f.images.filter((_, j) => j !== i);
+                            if (f.img) gallery.unshift(f.img);
+                            return { ...f, img: u, images: gallery };
+                          })}
+                          className="absolute -bottom-1.5 -right-1.5 w-5 h-5 bg-espresso text-ivory rounded-full grid place-items-center shadow hover:bg-espresso/80 text-[9px] font-bold">
+                          ★
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {FIELDS.map(({ key, label, span = "", type = "text" }) => (

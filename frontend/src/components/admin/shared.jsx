@@ -78,7 +78,7 @@ export function StatCard({ label, value, icon: Icon, sub, color = "text-espresso
 
 // ── Analytics Tab ─────────────────────────────────────────────────────────────
 export const EMPTY_FORM = {
-  name: "", brand: "", price: "", mrp: "", img: "",
+  name: "", brand: "", price: "", mrp: "", img: "", images: [],
   category_id: "", actives: "", badges: "", in_stock: true,
 };
 export const EMPTY_SERVICE  = { name: "", duration: "60 min", price: "", img: "", level: "Trained", tag: "" };
