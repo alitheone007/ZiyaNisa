@@ -42,6 +42,10 @@ services:
     image: mongo:7-jammy
     container_name: ziyanisa-mongodb
     restart: unless-stopped
+    # Cap WiredTiger cache (default ≈1.36GB on this 3.7GB box — a latent swap
+    # risk; data is only ~7MB) and bound the container. Matches RepairXpress.
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    mem_limit: 512m
     volumes:
       - mongo_data:/data/db
     networks:
