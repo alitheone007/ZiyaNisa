@@ -64,7 +64,7 @@ export default function SellOnZiyaNisa() {
   }
 
   return (
-    <section data-testid="sell-on-ziyanisa" className="py-20 md:py-28 relative overflow-hidden">
+    <section id="sell-on-ziyanisa" data-testid="sell-on-ziyanisa" className="py-20 md:py-28 relative overflow-hidden scroll-mt-24">
       <div className="max-w-7xl mx-auto px-5 md:px-10">
         <motion.div
           initial={{ opacity: 0, y: 24 }}

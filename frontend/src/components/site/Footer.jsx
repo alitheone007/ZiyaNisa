@@ -30,7 +30,7 @@ const COLS = [
     title: "Partner",
     items: [
       { label: "Become a Beautician",  href: "/beautician/apply" },
-      { label: "Sell on ZiyaNisa",     href: "#footer" },
+      { label: "Sell on ZiyaNisa",     href: "/#sell-on-ziyanisa" },
       { label: "Brand Partnerships",   href: "#footer" },
       { label: "Affiliate Program",    href: "#footer" },
     ],

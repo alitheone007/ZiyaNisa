@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import Header from "@/components/site/Header";
 import Seo from "@/components/site/Seo";
 import Hero from "@/components/site/Hero";
@@ -15,6 +17,14 @@ import MobileBottomNav from "@/components/site/MobileBottomNav";
 import Footer from "@/components/site/Footer";
 
 export default function Home() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.querySelector(location.hash);
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [location]);
+
   return (
     <div data-testid="home-page" className="min-h-screen bg-ivory text-espresso">
       <Seo path="/" />
