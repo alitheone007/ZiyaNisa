@@ -8,6 +8,7 @@ import PersonalizedSection from "@/components/site/PersonalizedSection";
 import KoreanGlow from "@/components/site/KoreanGlow";
 import ServiceTeaser from "@/components/site/ServiceTeaser";
 import BeauticianOnboard from "@/components/site/BeauticianOnboard";
+import SellOnZiyaNisa from "@/components/site/SellOnZiyaNisa";
 import IttarTeaser from "@/components/site/IttarTeaser";
 import JewelleryTeaser from "@/components/site/JewelleryTeaser";
 import MobileBottomNav from "@/components/site/MobileBottomNav";
@@ -27,6 +28,7 @@ export default function Home() {
         <KoreanGlow />
         <ServiceTeaser />
         <BeauticianOnboard />
+        <SellOnZiyaNisa />
         <IttarTeaser />
         <JewelleryTeaser />
       </main>

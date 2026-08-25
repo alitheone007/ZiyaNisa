@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Package, BarChart2, ShoppingBag, UserCheck, ClipboardList,
-  Tag, Layers, Calendar, FileSpreadsheet,
+  Tag, Layers, Calendar, FileSpreadsheet, Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/site/Header";
@@ -17,6 +17,7 @@ import { CategoriesTab } from "@/components/admin/CategoriesTab";
 import { OrdersTab } from "@/components/admin/OrdersTab";
 import { BookingsTab } from "@/components/admin/BookingsTab";
 import { BeauticiansTab } from "@/components/admin/BeauticiansTab";
+import { SellersTab } from "@/components/admin/SellersTab";
 import { InboxTab } from "@/components/admin/InboxTab";
 import { BugReportButton } from "@/components/admin/BugWidgets";
 import AmazonTab from "@/components/admin/AmazonTab";
@@ -50,6 +51,7 @@ export default function Admin() {
     { id: "orders",      label: "Orders",        Icon: Package },
     { id: "bookings",    label: "Svc Bookings",  Icon: Calendar },
     { id: "beauticians", label: "Beauticians",   Icon: UserCheck },
+    { id: "sellers",     label: "Sellers",       Icon: Store },
     { id: "inbox",       label: "Inbox",         Icon: ClipboardList },
     { id: "amazon",      label: "Amazon",        Icon: FileSpreadsheet },
   ];
@@ -97,6 +99,7 @@ export default function Admin() {
           {tab === "orders"      && <OrdersTab />}
           {tab === "bookings"    && <BookingsTab />}
           {tab === "beauticians" && <BeauticiansTab />}
+          {tab === "sellers"     && <SellersTab />}
           {tab === "inbox"       && <InboxTab />}
           {tab === "amazon"      && <AmazonTab />}
         </motion.div>

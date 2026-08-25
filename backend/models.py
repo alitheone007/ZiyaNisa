@@ -223,4 +223,23 @@ class TokenOut(BaseModel):
     access_token: str
     user: UserOut
 
+class SellerEnquiryCreate(BaseModel):
+    business_name: str
+    contact_name: str
+    phone: str
+    email: Optional[str] = None
+    category: str                # products|services|ittar|jewellery|other
+    city: Optional[str] = None
+    message: Optional[str] = None
+
+class SellerEnquiryOut(SellerEnquiryCreate):
+    id: str
+    status: str                  # new|contacted|onboarded|declined
+    admin_notes: Optional[str] = None
+    created_at: str
+
+class SellerEnquiryUpdate(BaseModel):
+    status: Optional[str] = None
+    admin_notes: Optional[str] = None
+
 

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from routers import (
     catalog, auth, orders, admin, account, chat,
-    beauticians, community, seo,
+    beauticians, community, seo, sellers,
 )
 from routers.beauticians import BEAUTICIANS_SEED, _h3_cell
 from amazon_pipeline import make_amazon_router
@@ -28,7 +28,7 @@ from amazon_pipeline import make_amazon_router
 app = FastAPI(title="ZiyaNisa API", version="0.1.0")
 api_router = APIRouter(prefix="/api")
 
-for domain in (catalog, auth, orders, admin, account, chat, beauticians, community, seo):
+for domain in (catalog, auth, orders, admin, account, chat, beauticians, community, seo, sellers):
     api_router.include_router(domain.router)
 api_router.include_router(make_amazon_router(db, token_from_header, is_admin_claims))
 
@@ -91,6 +91,8 @@ async def create_indexes():
     await db.feature_requests.create_index([("priority", 1)])
     await db.feature_requests.create_index([("reported_at", -1)])
     await db.feature_requests.create_index([("category", 1)])
+    await db.seller_enquiries.create_index([("status", 1)])
+    await db.seller_enquiries.create_index([("created_at", -1)])
     if await db.beauticians.count_documents({}) == 0:
         seeded_b = []
         for b in BEAUTICIANS_SEED:
