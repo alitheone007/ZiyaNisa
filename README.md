@@ -4,7 +4,6 @@
 Tagline: *K-Glow Beauty, Deccan Grace, Delivered to You.*
 
 Live: https://ziyanisa.bilionsales.com  
-Server: Hetzner VPS — 95.216.150.181
 
 ---
 
@@ -340,7 +339,7 @@ See [`router/SETUP.md`](router/SETUP.md) for router API and adding new tenants.
 1. Trigger: push to `main`
 2. Build `proxy` and `backend` Docker images
 3. Push to GHCR (`ghcr.io/alitheone007/ziyanisa/proxy:latest` etc.)
-4. SSH into 95.216.150.181
+4. SSH into the configured deployment host
 5. Pull new images + `docker compose up -d --remove-orphans`
 6. Write `.last_deployed_sha` on server
 
@@ -349,8 +348,8 @@ See [`router/SETUP.md`](router/SETUP.md) for router API and adding new tenants.
 **Required GitHub secrets:**
 - `HETZNER_SSH_KEY` — private key for server SSH
 - `GHCR_TOKEN` — PAT with `packages:write` for GHCR push
-- `HETZNER_HOST` — `95.216.150.181`
-- `HETZNER_USER` — `root`
+- `HETZNER_HOST` — deployment host (GitHub secret)
+- `HETZNER_USER` — dedicated deployment account (GitHub secret)
 
 **Server layout:**
 ```
