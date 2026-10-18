@@ -111,7 +111,7 @@ This way the spice workflow acts as a dispatcher, and ZiyaNisa workflow handles 
 Clawbot is installed on the Hetzner server. SSH in to discover it:
 
 ```bash
-ssh root@95.216.150.181
+ssh <deploy-user>@<configured-host>
 
 # Find it
 docker ps | grep -i claw
